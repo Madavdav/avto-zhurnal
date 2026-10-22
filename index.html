@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070b14">
+  <meta name="description" content="АвтоЖурнал — личный учёт заправок, расхода и расходов для нескольких автомобилей.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="АвтоЖурнал">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>АвтоЖурнал</title>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.6 16.8a8.5 8.5 0 1 1 14.8 0"/>
+            <path d="m12 13 3.2-3.2"/>
+            <circle cx="12" cy="14.2" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">АвтоЖурнал</span>
+          <button class="car-switch" type="button" id="car-switch" aria-haspopup="dialog" aria-controls="profiles-modal" title="Сменить автомобиль">
+            <span id="active-profile-name">Моя машина</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </button>
+        </div>
+      </div>
+      <button class="icon-btn" type="button" data-nav="settings" aria-label="Открыть настройки">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M4 7h16M4 17h16"/>
+          <circle cx="9" cy="7" r="2.4" fill="#070b14"/>
+          <circle cx="15" cy="17" r="2.4" fill="#070b14"/>
+        </svg>
+      </button>
+    </header>
+
+    <main class="main" id="main">
+      <!-- ГЛАВНАЯ -->
+      <section class="screen is-active" id="screen-home" data-screen="home">
+        <div class="hero">
+          <div class="hero-glow" aria-hidden="true"></div>
+          <div class="hero-top">
+            <span class="chip chip-live"><span class="live-dot"></span>Пробег</span>
+            <span class="hero-date" id="hero-date">—</span>
+          </div>
+          <div class="odometer">
+            <span class="odometer-value" id="stat-odometer">130 000</span>
+            <span class="odometer-unit">км</span>
+          </div>
+          <p class="hero-hint" id="hero-hint">Стартовый пробег. Добавьте первую заправку.</p>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <div class="stat-icon stat-icon-fuel" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 21V5a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v16"/>
+                <path d="M4 21h11M7.5 9h4"/>
+                <path d="M14 8h2.5L19 10.5V17a2 2 0 0 0 4 0v-5.5L20.5 9"/>
+              </svg>
+            </div>
+            <span class="stat-label">Средний расход</span>
+            <div class="stat-value-row">
+              <strong class="stat-value" id="stat-consumption">—</strong>
+              <span class="stat-unit">л/100 км</span>
+            </div>
+            <p class="stat-note" id="stat-consumption-note">по заправкам до полного</p>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-icon stat-icon-money" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="6" width="18" height="13" rx="3"/>
+                <path d="M3 10h18"/>
+                <circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none"/>
+              </svg>
+            </div>
+            <span class="stat-label">Расходы за месяц</span>
+            <div class="stat-value-row">
+              <strong class="stat-value stat-value-money" id="stat-month">—</strong>
+            </div>
+            <p class="stat-note" id="stat-month-note">в этом месяце</p>
+          </article>
+
+          <article class="stat-card stat-wide">
+            <div class="stat-icon stat-icon-road" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8.5 21 11 3M15.5 21 13 3"/>
+                <path d="M12 7v2M12 12v2M12 17v2"/>
+              </svg>
+            </div>
+            <div class="stat-wide-text">
+              <span class="stat-label">Стоимость километра</span>
+              <p class="stat-note" id="stat-costkm-note">нужны данные о пробеге</p>
+            </div>
+            <div class="stat-value-row">
+              <strong class="stat-value" id="stat-costkm">—</strong>
+            </div>
+          </article>
+
+          <article class="stat-card stat-wide">
+            <div class="stat-icon stat-icon-money" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="6" width="18" height="13" rx="3"/>
+                <path d="M3 10h18"/>
+                <circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none"/>
+              </svg>
+            </div>
+            <div class="stat-wide-text">
+              <span class="stat-label">Всего потрачено</span>
+              <p class="stat-note" id="stat-total-note">пока нет заправок</p>
+            </div>
+            <div class="stat-value-row">
+              <strong class="stat-value stat-value-money" id="stat-total">—</strong>
+            </div>
+          </article>
+        </div>
+
+        <div class="section-head">
+          <h2>Последние заправки</h2>
+          <button class="link-btn" type="button" data-nav="history">Все</button>
+        </div>
+        <div class="fuel-list" id="recent-list"></div>
+      </section>
+
+      <!-- ЖУРНАЛ -->
+      <section class="screen" id="screen-history" data-screen="history">
+        <div class="screen-head">
+          <div>
+            <p class="eyebrow">Журнал</p>
+            <h1>Заправки</h1>
+          </div>
+          <button class="round-btn" type="button" data-action="add" aria-label="Добавить заправку">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+        <div class="summary-strip" id="history-summary"></div>
+        <div class="fuel-list" id="history-list"></div>
+      </section>
+
+      <!-- СТАТИСТИКА -->
+      <section class="screen" id="screen-charts" data-screen="charts">
+        <div class="screen-head">
+          <div>
+            <p class="eyebrow">Аналитика</p>
+            <h1>Статистика</h1>
+          </div>
+        </div>
+
+        <article class="stats-summary">
+          <div class="stats-summary-top">
+            <div class="stats-summary-main">
+              <span class="stat-label">Потрачено на бензин</span>
+              <strong class="stats-total" id="stats-total">—</strong>
+            </div>
+            <label class="period-control" for="stats-period">
+              <span class="visually-hidden">Период статистики</span>
+              <select id="stats-period">
+                <option value="all">Всё время</option>
+                <option value="month">Этот месяц</option>
+                <option value="prev-month">Прошлый месяц</option>
+                <option value="last30">30 дней</option>
+                <option value="year">Этот год</option>
+              </select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+            </label>
+          </div>
+          <p class="stats-summary-meta" id="stats-meta">—</p>
+        </article>
+
+        <article class="chart-card station-card">
+          <div class="chart-head">
+            <div>
+              <h2>Статистика АЗС</h2>
+              <p id="station-period-label">за всё время</p>
+            </div>
+          </div>
+          <div class="station-highlights" id="station-highlights"></div>
+          <div class="station-list" id="station-list"></div>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-head">
+            <div>
+              <h2>Расход топлива</h2>
+              <p>л / 100 км</p>
+            </div>
+            <span class="chip chip-muted" id="consumption-badge">—</span>
+          </div>
+          <div class="chart" id="consumption-chart"></div>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-head">
+            <div>
+              <h2>Расходы</h2>
+              <p>последние 6 месяцев, ₪</p>
+            </div>
+            <span class="chip chip-muted" id="expenses-badge">—</span>
+          </div>
+          <div class="chart" id="expenses-chart"></div>
+        </article>
+
+        <p class="fineprint">Расход считается только между заправками «до полного». Частичные заправки не искажают результат: их литры добавляются к следующему полному баку.</p>
+      </section>
+
+      <!-- НАСТРОЙКИ -->
+      <section class="screen" id="screen-settings" data-screen="settings">
+        <div class="screen-head">
+          <div>
+            <p class="eyebrow">Приложение</p>
+            <h1>Настройки</h1>
+          </div>
+        </div>
+
+        <article class="settings-card">
+          <h2>Автомобиль</h2>
+          <p class="settings-note">У каждого автомобиля свой журнал, пробег, расход и статистика. Название видно в верхней панели — по нему можно быстро переключаться.</p>
+          <form id="settings-form" class="settings-form" novalidate>
+            <label class="field" for="settings-profile-name">
+              <span class="field-label">Название</span>
+              <span class="input-wrap">
+                <input id="settings-profile-name" type="text" maxlength="40" autocomplete="off" placeholder="Например, Рабочая">
+              </span>
+            </label>
+            <label class="field" for="settings-odometer">
+              <span class="field-label">Начальный пробег</span>
+              <span class="input-wrap">
+                <input id="settings-odometer" type="text" inputmode="numeric" autocomplete="off" placeholder="Необязательно">
+                <span class="input-suffix">км</span>
+              </span>
+            </label>
+            <p class="form-error" id="settings-error" role="alert"></p>
+            <button class="secondary-btn" type="submit">Сохранить автомобиль</button>
+          </form>
+          <button class="secondary-btn settings-profiles-btn" type="button" id="settings-profiles-btn">Сменить или добавить автомобиль</button>
+        </article>
+
+        <article class="settings-card">
+          <h2>Резервная копия</h2>
+          <p class="settings-note">Данные хранятся только в этом браузере. Если очистить его данные или удалить приложение, записи могут пропасть. Раз в месяц сохраняйте файл на телефон или в облако.</p>
+          <button class="secondary-btn" type="button" id="export-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 18v2h16v-2"/></svg>
+            Экспортировать данные
+          </button>
+          <label class="secondary-btn file-btn" for="import-file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 18v2h16v-2"/></svg>
+            Импортировать из файла
+          </label>
+          <input id="import-file" type="file" accept=".json,application/json" hidden>
+          <p class="fineprint" id="storage-info"></p>
+        </article>
+
+        <article class="settings-card">
+          <h2>Установка на iPhone</h2>
+          <ol class="steps">
+            <li>Откройте адрес приложения в <strong>Safari</strong>.</li>
+            <li>Нажмите кнопку «Поделиться» <span class="inline-icon">↑</span> внизу экрана.</li>
+            <li>Выберите «На экран Домой» и нажмите «Добавить».</li>
+            <li>Приложение откроется без адресной строки, как обычное.</li>
+          </ol>
+          <p class="fineprint">Для установки нужен адрес сайта по HTTPS. Файл, открытый с компьютера, на iPhone так не устанавливается.</p>
+        </article>
+
+        <article class="settings-card">
+          <h2>Опасная зона</h2>
+          <p class="settings-note">Удаляет все автомобили, заправки и настройки на этом устройстве. Сначала лучше сделать резервную копию.</p>
+          <button class="danger-btn" type="button" id="clear-btn">Удалить все данные</button>
+        </article>
+
+        <footer class="app-footer">
+          АвтоЖурнал · версия 2.0.0<br>
+          Данные не покидают ваше устройство.
+        </footer>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Основная навигация">
+      <button class="nav-item is-active" type="button" data-nav="home" aria-label="Главная">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>Главная</span>
+      </button>
+      <button class="nav-item" type="button" data-nav="history" aria-label="Заправки">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
+        <span>Заправки</span>
+      </button>
+      <button class="nav-add" type="button" data-action="add" aria-label="Добавить заправку">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="nav-item" type="button" data-nav="charts" aria-label="Статистика">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-7M12 20V5M19 20v-10"/><path d="M3 20h18"/></svg>
+        <span>Статистика</span>
+      </button>
+      <button class="nav-item" type="button" data-nav="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="17" r="2.2"/></svg>
+        <span>Ещё</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ФОРМА ЗАПРАВКИ -->
+  <div class="sheet" id="fuel-sheet" aria-hidden="true">
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <header class="sheet-header">
+        <button class="icon-btn" type="button" id="sheet-close" aria-label="Закрыть форму">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <h2 id="sheet-title">Новая заправка</h2>
+        <span class="sheet-spacer"></span>
+      </header>
+
+      <form class="fuel-form" id="fuel-form" novalidate>
+        <div class="form-row">
+          <label class="field" for="fuel-date">
+            <span class="field-label">Дата</span>
+            <span class="input-wrap">
+              <input id="fuel-date" type="date" required>
+            </span>
+          </label>
+          <label class="field" for="fuel-odometer">
+            <span class="field-label">Пробег</span>
+            <span class="input-wrap">
+              <input id="fuel-odometer" type="text" inputmode="numeric" autocomplete="off" placeholder="130 500" required>
+              <span class="input-suffix">км</span>
+            </span>
+          </label>
+        </div>
+
+        <section class="calc-card" aria-labelledby="calc-title">
+          <div class="calc-head">
+            <h3 id="calc-title">Стоимость заправки</h3>
+            <span class="chip chip-muted">₪</span>
+          </div>
+          <p class="calc-intro">Заполните литры и <strong>одно</strong> из полей цены — второе посчитается сразу.</p>
+
+          <div class="calc-row">
+            <label class="field" for="fuel-liters">
+              <span class="field-label">Залил, литров</span>
+              <span class="input-wrap">
+                <input id="fuel-liters" type="text" inputmode="decimal" autocomplete="off" placeholder="42,5" required>
+                <span class="input-suffix">л</span>
+              </span>
+            </label>
+            <label class="field" for="fuel-price">
+              <span class="field-label">Цена за литр</span>
+              <span class="input-wrap">
+                <input id="fuel-price" type="text" inputmode="decimal" autocomplete="off" placeholder="3,19">
+                <span class="input-suffix">₪</span>
+              </span>
+            </label>
+          </div>
+
+          <label class="field field-total" for="fuel-total">
+            <span class="field-label">Цена за всё</span>
+            <span class="input-wrap input-wrap-large">
+              <input id="fuel-total" type="text" inputmode="decimal" autocomplete="off" placeholder="135,58">
+              <span class="input-suffix">₪</span>
+            </span>
+          </label>
+
+          <p class="calc-hint" id="calc-hint" aria-live="polite">
+            Введите литры и цену — недостающее поле заполнится автоматически.
+          </p>
+        </section>
+
+        <label class="field" for="fuel-station">
+          <span class="field-label">АЗС</span>
+          <span class="input-wrap select-wrap">
+            <select id="fuel-station">
+              <option value="">Не выбрана</option>
+              <option value="paz">Paz</option>
+              <option value="sonol">Sonol</option>
+              <option value="dor-alon">Dor Alon</option>
+              <option value="delek">Delek</option>
+              <option value="other">Другое</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </span>
+        </label>
+
+        <label class="field" id="fuel-station-other-field" for="fuel-station-other" hidden>
+          <span class="field-label">Название АЗС</span>
+          <span class="input-wrap">
+            <input id="fuel-station-other" type="text" autocomplete="off" maxlength="80" placeholder="Например, Yango">
+          </span>
+        </label>
+
+        <label class="field" for="fuel-note">
+          <span class="field-label">Заметка</span>
+          <span class="input-wrap input-wrap-textarea">
+            <textarea id="fuel-note" rows="3" maxlength="500" placeholder="Маршрут, самочувствие машины…"></textarea>
+          </span>
+        </label>
+
+        <label class="switch-row" for="fuel-full">
+          <span class="switch-text">
+            <strong>Заправка до полного</strong>
+            <small>Нужна для правильного расчёта расхода</small>
+          </span>
+          <span class="switch">
+            <input id="fuel-full" type="checkbox" checked>
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+        </label>
+
+        <p class="form-error" id="form-error" role="alert"></p>
+
+        <button class="primary-btn" type="submit" id="fuel-submit">Сохранить заправку</button>
+        <button class="danger-link" type="button" id="fuel-delete" hidden>Удалить эту заправку</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- АВТОМОБИЛИ -->
+  <div class="modal-backdrop" id="profiles-modal" hidden>
+    <div class="modal-card profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profiles-title">
+      <div class="profile-modal-head">
+        <div>
+          <p class="eyebrow">Профили</p>
+          <h3 id="profiles-title">Автомобили</h3>
+        </div>
+        <button class="icon-btn" type="button" id="profiles-close" aria-label="Закрыть список автомобилей">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+
+      <p class="profile-modal-note">Выберите машину — у каждой свой журнал, расход и статистика.</p>
+      <div class="profile-list" id="profiles-list"></div>
+      <button class="secondary-btn" type="button" id="profile-add-btn">+ Добавить автомобиль</button>
+
+      <form class="profile-form" id="profile-form" novalidate hidden>
+        <p class="profile-form-title">Новый автомобиль</p>
+        <label class="field" for="profile-name">
+          <span class="field-label">Название</span>
+          <span class="input-wrap">
+            <input id="profile-name" type="text" maxlength="40" autocomplete="off" placeholder="Например, Рабочая">
+          </span>
+        </label>
+        <label class="field" for="profile-odometer">
+          <span class="field-label">Начальный пробег</span>
+          <span class="input-wrap">
+            <input id="profile-odometer" type="text" inputmode="numeric" autocomplete="off" placeholder="Необязательно">
+            <span class="input-suffix">км</span>
+          </span>
+        </label>
+        <p class="form-error" id="profile-error" role="alert"></p>
+        <div class="profile-form-actions">
+          <button class="ghost-btn" type="button" id="profile-cancel">Отмена</button>
+          <button class="primary-btn" type="submit" id="profile-submit">Добавить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ПОДТВЕРЖДЕНИЕ -->
+  <div class="modal-backdrop" id="confirm-modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h3 id="confirm-title">Удалить запись?</h3>
+      <p id="confirm-text">Это действие нельзя отменить.</p>
+      <div class="modal-actions">
+        <button class="ghost-btn" type="button" id="confirm-cancel">Отмена</button>
+        <button class="danger-solid" type="button" id="confirm-ok">Удалить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./calc.js"></script>
+  <script src="./storage.js"></script>
+  <script src="./charts.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
