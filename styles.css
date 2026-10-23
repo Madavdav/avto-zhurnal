@@ -413,6 +413,57 @@ a:focus-visible {
   color: var(--muted);
 }
 
+.home-period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 18px 2px 0;
+}
+
+.home-period-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.period-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.period-switch-btn {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.period-switch-btn.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.period-switch-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1616,6 +1667,61 @@ a:focus-visible {
 .calc-hint.is-calculated {
   color: #a7f3e7;
   background: rgba(94, 234, 212, 0.075);
+}
+
+.odometer-assist {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 2px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(94, 234, 212, 0.14);
+  background: rgba(94, 234, 212, 0.055);
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: #a7f3e7;
+}
+
+.odometer-assist[hidden] {
+  display: none;
+}
+
+.odometer-assist.is-warning {
+  border-color: rgba(251, 113, 133, 0.22);
+  background: rgba(251, 113, 133, 0.06);
+  color: #fecdd3;
+}
+
+.odometer-assist-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.odometer-assist-action {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.odometer-assist-action[hidden] {
+  display: none;
+}
+
+.odometer-assist-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
 .switch-row {

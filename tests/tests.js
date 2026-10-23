@@ -419,6 +419,136 @@
     same(result.monthExpenses, 0);
   });
 
+  test('Статистика', 'Пробег на главном экране берётся из последней записи, а не из максимума', function () {
+    var data = [
+      fueling('2026-09-01', 132000, 40, 200, true),
+      fueling('2026-10-01', 131500, 30, 150, true),
+      fueling('2026-10-20', 131200, 20, 100, true)
+    ];
+    var result = C.calculateStats({
+      fuelings: data,
+      initialOdometer: 130000,
+      now: new Date(2026, 9, 23)
+    });
+    same(result.currentOdometer, 131200, 'последняя запись по дате');
+    same(result.lastDate, '2026-10-20');
+  });
+
+  test('Пробег', 'Последние три цифры превращаются в предполагаемый полный пробег', function () {
+    same(C.proposeOdometer('450', 130500), 131450, 'следующая тысяча');
+    same(C.proposeOdometer('450', 130300), 130450, 'та же тысяча');
+    same(C.proposeOdometer('450', 130450), 130450, 'равен предыдущему');
+    same(C.proposeOdometer('000', 130500), 131000, 'переход через тысячу');
+    same(C.proposeOdometer('045', 130500), 131045, 'ведущий ноль');
+    same(C.proposeOdometer('450', 0), 450);
+    same(C.proposeOdometer('45', 130500), null, 'две цифры не дополняем');
+    same(C.proposeOdometer('130450', 130500), null, 'полный пробег не меняем');
+    same(C.proposeOdometer('450', null), null, 'нет опорного пробега');
+  });
+
+  test('Пробег', 'Предыдущая запись ищется по дате без редактируемой записи', function () {
+    var data = [
+      fueling('2026-10-01', 1100, 40, 200, true),
+      fueling('2026-10-05', 1200, 30, 150, true),
+      fueling('2026-10-20', 1300, 20, 100, true)
+    ];
+    same(C.findPreviousRecord(data, '2026-10-04').id, 'r-2026-10-01-1100');
+    same(
+      C.findPreviousRecord(data, '2026-10-05', 'r-2026-10-05-1200').id,
+      'r-2026-10-01-1100',
+      'редактируемая запись не считается предыдущей'
+    );
+    same(C.findPreviousRecord(data, '2026-09-30'), null);
+    same(C.findPreviousRecord(data, 'не дата'), null);
+  });
+
+  test('Топливо за период', 'Месяц и всё время считают расходы и километры отдельно', function () {
+    var now = new Date(2026, 9, 23);
+    var data = [
+      fueling('2026-09-15', 130500, 40, 200, true),
+      fueling('2026-10-01', 131000, 30, 150, true),
+      fueling('2026-10-20', 131500, 20, 100, false)
+    ];
+
+    var month = C.calculateFuelPeriodStats(data, {
+      period: 'month',
+      initialOdometer: 130000,
+      now: now
+    });
+    same(month.totalSpent, 250, 'только октябрь');
+    same(month.totalLiters, 50);
+    same(month.startOdometer, 130500, 'опора перед месяцем');
+    same(month.distance, 1000, 'путь за октябрь');
+    same(month.costPerKm, 0.25);
+
+    var all = C.calculateFuelPeriodStats(data, {
+      period: 'all',
+      initialOdometer: 130000,
+      now: now
+    });
+    same(all.totalSpent, 450);
+    same(all.startOdometer, 130000, 'начальный пробег');
+    same(all.distance, 1500);
+    same(all.costPerKm, 0.3);
+  });
+
+  test('Топливо за период', 'Без опорной записи или начального пробега стоимость не выдумывается', function () {
+    var now = new Date(2026, 9, 23);
+    var data = [
+      fueling('2026-10-01', 131000, 30, 150, true),
+      fueling('2026-10-20', 131500, 20, 100, false)
+    ];
+
+    var month = C.calculateFuelPeriodStats(data, {
+      period: 'month',
+      initialOdometer: 130000,
+      now: now
+    });
+    same(month.totalSpent, 250);
+    same(month.distance, null, 'нет записи до начала месяца');
+    same(month.costPerKm, null);
+
+    var all = C.calculateFuelPeriodStats(data, {
+      period: 'all',
+      initialOdometer: null,
+      now: now
+    });
+    same(all.totalSpent, 250);
+    same(all.distance, null, 'нет начального пробега');
+    same(all.costPerKm, null);
+    same(all.hasInitialOdometer, false);
+  });
+
+  test('Топливо за период', 'Последняя запись важнее ошибочного максимума', function () {
+    var data = [
+      fueling('2026-09-01', 132000, 40, 200, true),
+      fueling('2026-10-20', 131500, 30, 150, true)
+    ];
+    var result = C.calculateFuelPeriodStats(data, {
+      period: 'all',
+      initialOdometer: 130000,
+      now: new Date(2026, 9, 23)
+    });
+    same(result.endOdometer, 131500);
+    same(result.distance, 1500);
+    same(result.costPerKm, 350 / 1500);
+  });
+
+  test('Топливо за период', 'Если пробег не вырос, стоимость километра не считается', function () {
+    var data = [
+      fueling('2026-09-15', 131600, 40, 200, true),
+      fueling('2026-10-20', 131500, 20, 100, true)
+    ];
+    var result = C.calculateFuelPeriodStats(data, {
+      period: 'month',
+      initialOdometer: 130000,
+      now: new Date(2026, 9, 23)
+    });
+    same(result.totalSpent, 100);
+    same(result.distance, null);
+    same(result.costPerKm, null);
+  });
+
   test('Статистика', 'Расходы по месяцам: последние 6 месяцев по порядку', function () {
     var data = [
       fueling('2026-05-02', 1000, 10, 100, true),

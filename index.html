@@ -60,6 +60,14 @@
           <p class="hero-hint" id="hero-hint">Стартовый пробег. Добавьте первую заправку.</p>
         </div>
 
+        <div class="home-period">
+          <span class="home-period-label">Топливо за период</span>
+          <div class="period-switch" role="group" aria-label="Период для расходов на топливо">
+            <button class="period-switch-btn is-active" type="button" data-home-period="month" aria-pressed="true">Этот месяц</button>
+            <button class="period-switch-btn" type="button" data-home-period="all" aria-pressed="false">Всё время</button>
+          </div>
+        </div>
+
         <div class="stats-grid">
           <article class="stat-card">
             <div class="stat-icon stat-icon-fuel" aria-hidden="true">
@@ -85,11 +93,11 @@
                 <circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none"/>
               </svg>
             </div>
-            <span class="stat-label">Расходы за месяц</span>
+            <span class="stat-label">Расходы на топливо</span>
             <div class="stat-value-row">
-              <strong class="stat-value stat-value-money" id="stat-month">—</strong>
+              <strong class="stat-value stat-value-money" id="stat-fuel-spent">—</strong>
             </div>
-            <p class="stat-note" id="stat-month-note">в этом месяце</p>
+            <p class="stat-note" id="stat-fuel-spent-note">в этом месяце</p>
           </article>
 
           <article class="stat-card stat-wide">
@@ -100,7 +108,7 @@
               </svg>
             </div>
             <div class="stat-wide-text">
-              <span class="stat-label">Стоимость километра</span>
+              <span class="stat-label">Топливо, ₪/км</span>
               <p class="stat-note" id="stat-costkm-note">нужны данные о пробеге</p>
             </div>
             <div class="stat-value-row">
@@ -284,7 +292,7 @@
         </article>
 
         <footer class="app-footer">
-          АвтоЖурнал · версия 2.1.0<br>
+          АвтоЖурнал · версия 2.2.0<br>
           Данные не покидают ваше устройство.
         </footer>
       </section>
@@ -339,6 +347,11 @@
               <span class="input-suffix">км</span>
             </span>
           </label>
+        </div>
+
+        <div class="odometer-assist" id="odometer-assist" aria-live="polite" hidden>
+          <span class="odometer-assist-text" id="odometer-assist-text"></span>
+          <button class="odometer-assist-action" type="button" id="odometer-assist-action" hidden>Подставить</button>
         </div>
 
         <section class="calc-card" aria-labelledby="calc-title">

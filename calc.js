@@ -295,6 +295,50 @@
   }
 
   /**
+   * Ищет последнюю по дате запись не позже указанной даты.
+   * Нужна для подсказки пробега и предупреждения о его уменьшении.
+   */
+  function findPreviousRecord(fuelings, date, excludeId) {
+    if (!isValidDateString(date)) {
+      return null;
+    }
+    var records = sortedByDateDesc(fuelings);
+    for (var index = 0; index < records.length; index += 1) {
+      if (excludeId && records[index].id === excludeId) {
+        continue;
+      }
+      if (records[index].date <= date) {
+        return records[index];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Если введены только последние три цифры, возвращает предполагаемый
+   * полный пробег. Бережёт старшие разряды предыдущего пробега и при
+   * необходимости увеличивает тысячу, чтобы значение не стало меньше.
+   */
+  function proposeOdometer(value, previousOdometer) {
+    var text = typeof value === 'string'
+      ? value
+      : (typeof value === 'number' && Number.isFinite(value) ? String(value) : '');
+    var digits = text.replace(/\D/g, '');
+    if (digits.length !== 3) {
+      return null;
+    }
+    var previous = nonNegative(previousOdometer);
+    if (previous === null) {
+      return null;
+    }
+    var candidate = Math.floor(previous / 1000) * 1000 + parseInt(digits, 10);
+    while (candidate < previous) {
+      candidate += 1000;
+    }
+    return candidate > 0 ? candidate : null;
+  }
+
+  /**
    * Расход «от полного до полного».
    *
    * Считаем литры всех заправок после предыдущей полной (включая частичные)
@@ -450,6 +494,64 @@
     };
   }
 
+  /**
+   * Топливная статистика за период: расходы и стоимость топлива на километр.
+   * Для месяца началом служит последняя запись до первого числа, поэтому
+   * в расчёт не попадает путь, пройденный до выбранного периода. Если
+   * опорного пробега нет, стоимость километра не выдумывается — будет null.
+   */
+  function calculateFuelPeriodStats(fuelings, options) {
+    var source = options || {};
+    var period = source.period === 'month' ? 'month' : 'all';
+    var now = source.now instanceof Date ? source.now : new Date();
+    var initialOdometer = nonNegative(source.initialOdometer);
+    var records = sortedByDateDesc(fuelings);
+    var range = periodRange(period, now);
+    var periodRecords = range
+      ? records.filter(function (item) {
+          return item.date >= range.start && item.date < range.end;
+        })
+      : records;
+
+    var totalSpent = 0;
+    var totalLiters = 0;
+    periodRecords.forEach(function (item) {
+      totalSpent += Number.isFinite(item.total) ? item.total : 0;
+      totalLiters += item.liters;
+    });
+
+    var endRecord = periodRecords.length ? periodRecords[0] : null;
+    var startOdometer = null;
+
+    if (range) {
+      for (var index = 0; index < records.length; index += 1) {
+        if (records[index].date < range.start) {
+          startOdometer = records[index].odometer;
+          break;
+        }
+      }
+    } else {
+      startOdometer = initialOdometer;
+    }
+
+    var distance = null;
+    if (endRecord && startOdometer !== null && endRecord.odometer > startOdometer) {
+      distance = endRecord.odometer - startOdometer;
+    }
+
+    return {
+      period: period,
+      recordsCount: periodRecords.length,
+      totalSpent: totalSpent,
+      totalLiters: totalLiters,
+      distance: distance,
+      startOdometer: startOdometer,
+      endOdometer: endRecord ? endRecord.odometer : null,
+      costPerKm: distance !== null && distance > 0 ? totalSpent / distance : null,
+      hasInitialOdometer: initialOdometer !== null
+    };
+  }
+
   function calculateStationStats(fuelings, options) {
     var source = options || {};
     var period = typeof source.period === 'string' ? source.period : 'all';
@@ -524,17 +626,11 @@
     var now = source.now instanceof Date ? source.now : new Date();
 
     var records = sortedByOdometer(fuelings);
+    var latestRecord = sortedByDateDesc(records)[0] || null;
     var minOdometer = records.length ? records[0].odometer : null;
     var maxOdometer = records.length ? records[records.length - 1].odometer : null;
 
-    var currentOdometer = null;
-    if (maxOdometer !== null && initialOdometer !== null) {
-      currentOdometer = Math.max(initialOdometer, maxOdometer);
-    } else if (maxOdometer !== null) {
-      currentOdometer = maxOdometer;
-    } else {
-      currentOdometer = initialOdometer;
-    }
+    var currentOdometer = latestRecord ? latestRecord.odometer : initialOdometer;
 
     var baseline = null;
     if (minOdometer !== null && initialOdometer !== null) {
@@ -573,9 +669,7 @@
       totalLiters: totalLiters,
       trackedDistance: trackedDistance,
       recordsCount: records.length,
-      lastDate: records.length
-        ? records.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0].date
-        : null
+      lastDate: latestRecord ? latestRecord.date : null
     };
   }
 
@@ -625,11 +719,14 @@
     isValidFueling: isValidFueling,
     sortedByOdometer: sortedByOdometer,
     sortedByDateDesc: sortedByDateDesc,
+    findPreviousRecord: findPreviousRecord,
+    proposeOdometer: proposeOdometer,
     calculateConsumption: calculateConsumption,
     calculateStats: calculateStats,
     periodRange: periodRange,
     filterByPeriod: filterByPeriod,
     calculatePeriodSummary: calculatePeriodSummary,
+    calculateFuelPeriodStats: calculateFuelPeriodStats,
     calculateStationStats: calculateStationStats,
     expensesForMonth: expensesForMonth,
     monthlyExpenseSeries: monthlyExpenseSeries

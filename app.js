@@ -16,6 +16,8 @@
   var toastTimer = null;
   var confirmResolver = null;
   var statsPeriod = 'all';
+  var homePeriod = 'month';
+  var odometerSuggestion = null;
 
   var calcState = {
     liters: null,
@@ -38,12 +40,13 @@
     el.heroHint = $('hero-hint');
     el.statConsumption = $('stat-consumption');
     el.statConsumptionNote = $('stat-consumption-note');
-    el.statMonth = $('stat-month');
-    el.statMonthNote = $('stat-month-note');
+    el.statFuelSpent = $('stat-fuel-spent');
+    el.statFuelSpentNote = $('stat-fuel-spent-note');
     el.statTotal = $('stat-total');
     el.statTotalNote = $('stat-total-note');
     el.statCostKm = $('stat-costkm');
     el.statCostKmNote = $('stat-costkm-note');
+    el.homePeriodButtons = Array.prototype.slice.call(document.querySelectorAll('[data-home-period]'));
     el.recentList = $('recent-list');
     el.historyList = $('history-list');
     el.historySummary = $('history-summary');
@@ -87,6 +90,9 @@
     el.form = $('fuel-form');
     el.fuelDate = $('fuel-date');
     el.fuelOdometer = $('fuel-odometer');
+    el.odometerAssist = $('odometer-assist');
+    el.odometerAssistText = $('odometer-assist-text');
+    el.odometerAssistAction = $('odometer-assist-action');
     el.fuelLiters = $('fuel-liters');
     el.fuelPrice = $('fuel-price');
     el.fuelTotal = $('fuel-total');
@@ -113,6 +119,7 @@
     bindForm();
     bindSettings();
     bindStatsPeriod();
+    bindHomePeriod();
     bindProfiles();
     bindConfirm();
     bindDelegatedActions();
@@ -319,6 +326,16 @@
     });
   }
 
+  function bindHomePeriod() {
+    el.homePeriodButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        var nextPeriod = button.getAttribute('data-home-period');
+        homePeriod = nextPeriod === 'all' ? 'all' : 'month';
+        renderHome();
+      });
+    });
+  }
+
   function bindAddButtons() {
     document.querySelectorAll('[data-action="add"]').forEach(function (button) {
       button.addEventListener('click', function () {
@@ -343,9 +360,53 @@
 
   /* ── Главный экран ─────────────────────────────────────── */
 
+  function updateHomePeriodButtons() {
+    el.homePeriodButtons.forEach(function (button) {
+      var active = button.getAttribute('data-home-period') === homePeriod;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function homePeriodText() {
+    return homePeriod === 'month' ? currentMonthLabel() : 'за всё время';
+  }
+
+  function fuelCostNote(fuelStats) {
+    if (homePeriod === 'month') {
+      if (!fuelStats.recordsCount) {
+        return 'в этом месяце нет заправок';
+      }
+      if (fuelStats.startOdometer === null) {
+        return 'нужна заправка до начала месяца';
+      }
+      if (fuelStats.distance === null) {
+        return 'проверьте пробег: он не вырос';
+      }
+    } else {
+      if (!fuelStats.recordsCount) {
+        return 'пока нет заправок';
+      }
+      if (!fuelStats.hasInitialOdometer) {
+        return 'укажите начальный пробег';
+      }
+      if (fuelStats.distance === null) {
+        return 'проверьте пробег от начального';
+      }
+    }
+    return 'нужны данные о пробеге';
+  }
+
   function renderHome() {
     var stats = getStats();
     var profile = activeProfile();
+    var fuelStats = C.calculateFuelPeriodStats(getFuelings(), {
+      period: homePeriod,
+      initialOdometer: profile.initialOdometer,
+      now: new Date()
+    });
+
+    updateHomePeriodButtons();
 
     el.statOdometer.textContent = stats.currentOdometer !== null
       ? C.formatNumber(stats.currentOdometer, 0)
@@ -375,20 +436,21 @@
       el.statConsumptionNote.textContent = 'нужны две заправки до полного';
     }
 
-    el.statMonth.textContent = C.formatMoney(stats.monthExpenses);
-    el.statMonthNote.textContent = currentMonthLabel();
+    el.statFuelSpent.textContent = C.formatMoney(fuelStats.totalSpent);
+    el.statFuelSpentNote.textContent = homePeriodText();
 
     el.statTotal.textContent = C.formatMoney(stats.totalSpent);
     el.statTotalNote.textContent = stats.recordsCount > 0
       ? 'за ' + stats.recordsCount + ' ' + plural(stats.recordsCount, 'заправку', 'заправки', 'заправок')
       : 'пока нет заправок';
 
-    if (stats.costPerKm !== null) {
-      el.statCostKm.textContent = C.formatMoney(stats.costPerKm);
-      el.statCostKmNote.textContent = 'на ' + C.formatNumber(stats.trackedDistance, 0) + ' км пути';
+    if (fuelStats.costPerKm !== null) {
+      el.statCostKm.textContent = C.formatMoney(fuelStats.costPerKm);
+      el.statCostKmNote.textContent = 'на ' + C.formatNumber(fuelStats.distance, 0) +
+        ' км ' + (homePeriod === 'month' ? 'за этот месяц' : 'за всё время');
     } else {
       el.statCostKm.textContent = '—';
-      el.statCostKmNote.textContent = 'нужны данные о пробеге';
+      el.statCostKmNote.textContent = fuelCostNote(fuelStats);
     }
 
     var recent = C.sortedByDateDesc(getFuelings()).slice(0, 3);
@@ -396,7 +458,7 @@
       ? recent.map(fuelCardHtml).join('')
       : emptyStateHtml(
           'Заправок пока нет',
-          'Добавьте первую запись — приложение посчитает расход и стоимость километра.',
+          'Добавьте первую запись — приложение посчитает расход топлива и его стоимость на километр.',
           true
         );
   }
@@ -864,6 +926,59 @@
 
   /* ── Форма заправки ────────────────────────────────────── */
 
+  function previousOdometerForForm() {
+    var record = C.findPreviousRecord(getFuelings(), el.fuelDate.value, editingId);
+    if (record) {
+      return record.odometer;
+    }
+    return activeProfile().initialOdometer;
+  }
+
+  function updateOdometerAssist() {
+    if (!el.odometerAssist) {
+      return;
+    }
+    var raw = el.fuelOdometer.value.replace(/\D/g, '');
+    var entered = C.parseNumber(raw);
+    var previous = previousOdometerForForm();
+    var suggestion = C.proposeOdometer(raw, previous);
+    odometerSuggestion = suggestion;
+
+    if (suggestion !== null && suggestion !== entered) {
+      el.odometerAssist.hidden = false;
+      el.odometerAssist.classList.remove('is-warning');
+      el.odometerAssistText.textContent =
+        'Похоже, полный пробег: ' + C.formatNumber(suggestion, 0) + ' км.';
+      el.odometerAssistAction.hidden = false;
+      return;
+    }
+
+    if (raw.length >= 4 && previous !== null && entered !== null && entered < previous) {
+      el.odometerAssist.hidden = false;
+      el.odometerAssist.classList.add('is-warning');
+      el.odometerAssistText.textContent =
+        'Меньше предыдущей записи (' + C.formatNumber(previous, 0) +
+        ' км). Можно сохранить, если исправляете ошибку.';
+      el.odometerAssistAction.hidden = true;
+      return;
+    }
+
+    el.odometerAssist.hidden = true;
+    el.odometerAssist.classList.remove('is-warning');
+    el.odometerAssistText.textContent = '';
+    el.odometerAssistAction.hidden = true;
+  }
+
+  function applyOdometerSuggestion() {
+    if (odometerSuggestion === null) {
+      return;
+    }
+    el.fuelOdometer.value = String(odometerSuggestion);
+    clearFieldError(el.fuelOdometer);
+    el.formError.textContent = '';
+    updateOdometerAssist();
+  }
+
   function openForm(id) {
     var record = null;
     editingId = id || null;
@@ -929,6 +1044,7 @@
     }
 
     updateCalcHint(C.recalculate(calcState));
+    updateOdometerAssist();
     el.form.scrollTop = 0;
     document.querySelector('.fuel-form').scrollTop = 0;
     el.sheet.inert = false;
@@ -946,6 +1062,13 @@
     el.sheet.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('sheet-open');
     editingId = null;
+    odometerSuggestion = null;
+    if (el.odometerAssist) {
+      el.odometerAssist.hidden = true;
+      el.odometerAssist.classList.remove('is-warning');
+      el.odometerAssistText.textContent = '';
+      el.odometerAssistAction.hidden = true;
+    }
     el.formError.textContent = '';
     clearFormErrors();
   }
@@ -1067,12 +1190,16 @@
       }
       clearFieldError(el.fuelOdometer);
       el.formError.textContent = '';
+      updateOdometerAssist();
     });
 
     el.fuelDate.addEventListener('input', function () {
       clearFieldError(el.fuelDate);
       el.formError.textContent = '';
+      updateOdometerAssist();
     });
+
+    el.odometerAssistAction.addEventListener('click', applyOdometerSuggestion);
 
     el.sheetClose.addEventListener('click', closeForm);
     el.form.addEventListener('submit', handleFormSubmit);
@@ -1089,7 +1216,13 @@
     clearFormErrors();
 
     var date = el.fuelDate.value;
-    var odometer = C.parseNumber(el.fuelOdometer.value);
+    var odometerRaw = el.fuelOdometer.value.replace(/\D/g, '');
+    var odometer = C.parseNumber(odometerRaw);
+    var suggestedOdometer = C.proposeOdometer(odometerRaw, previousOdometerForForm());
+    if (suggestedOdometer !== null) {
+      odometer = suggestedOdometer;
+      el.fuelOdometer.value = String(suggestedOdometer);
+    }
     var liters = calcState.liters;
     var price = calcState.pricePerLiter;
     var total = calcState.total;
