@@ -13,6 +13,7 @@
   var state = S.load();
   var currentScreen = 'home';
   var editingId = null;
+  var editingMaintenanceId = null;
   var toastTimer = null;
   var confirmResolver = null;
   var statsPeriod = 'all';
@@ -84,6 +85,11 @@
     el.snapshotInfo = $('snapshot-info');
     el.clearBtn = $('clear-btn');
     el.storageInfo = $('storage-info');
+    el.statMaintenanceTotal = $('stat-maintenance-total');
+    el.statMaintenanceNote = $('stat-maintenance-note');
+    el.maintenanceList = $('maintenance-list');
+    el.maintenanceTotalAll = $('maintenance-total-all');
+    el.maintenanceSummaryMeta = $('maintenance-summary-meta');
     el.sheet = $('fuel-sheet');
     el.sheetTitle = $('sheet-title');
     el.sheetClose = $('sheet-close');
@@ -105,6 +111,20 @@
     el.formError = $('form-error');
     el.fuelSubmit = $('fuel-submit');
     el.fuelDelete = $('fuel-delete');
+    el.maintenanceSheet = $('maintenance-sheet');
+    el.maintenanceSheetTitle = $('maintenance-sheet-title');
+    el.maintenanceSheetClose = $('maintenance-sheet-close');
+    el.maintenanceForm = $('maintenance-form');
+    el.maintenanceDate = $('maintenance-date');
+    el.maintenanceOdometer = $('maintenance-odometer');
+    el.maintenanceTitle = $('maintenance-title');
+    el.maintenanceParts = $('maintenance-parts');
+    el.maintenanceLabor = $('maintenance-labor');
+    el.maintenanceNote = $('maintenance-note');
+    el.maintenanceFormError = $('maintenance-form-error');
+    el.maintenanceFormCancel = $('maintenance-form-cancel');
+    el.maintenanceFormTotal = $('maintenance-form-total');
+    el.maintenanceDeleteBtn = $('maintenance-delete');
     el.confirmModal = $('confirm-modal');
     el.confirmTitle = $('confirm-title');
     el.confirmText = $('confirm-text');
@@ -113,10 +133,17 @@
     el.toast = $('toast');
 
     el.fuelDate.max = todayIso();
+    if (el.maintenanceDate) {
+      el.maintenanceDate.max = todayIso();
+    }
+    if (el.maintenanceSheet) {
+      el.maintenanceSheet.inert = true;
+    }
 
     bindNavigation();
     bindAddButtons();
     bindForm();
+    bindMaintenanceForm();
     bindSettings();
     bindStatsPeriod();
     bindHomePeriod();
@@ -125,8 +152,12 @@
     bindDelegatedActions();
     bindKeyboard();
 
-    el.statsPeriod.value = statsPeriod;
-    el.sheet.inert = true;
+    if (el.statsPeriod) {
+      el.statsPeriod.value = statsPeriod;
+    }
+    if (el.sheet) {
+      el.sheet.inert = true;
+    }
 
     renderAll();
     registerServiceWorker();
@@ -234,6 +265,43 @@
     return null;
   }
 
+  function findMaintenance(id) {
+    var records = getMaintenances();
+    for (var index = 0; index < records.length; index += 1) {
+      if (records[index].id === id) {
+        return records[index];
+      }
+    }
+    return null;
+  }
+
+  function latestKnownOdometer() {
+    var fuelings = C.sortedByDateDesc(getFuelings());
+    var maintenances = C.sortedMaintenanceByDateDesc(getMaintenances());
+    var candidates = [];
+
+    if (fuelings.length) {
+      candidates.push(fuelings[0]);
+    }
+    if (maintenances.length) {
+      candidates.push(maintenances[0]);
+    }
+
+    if (!candidates.length) {
+      return activeProfile().initialOdometer;
+    }
+
+    var latest = candidates[0];
+    for (var index = 1; index < candidates.length; index += 1) {
+      var item = candidates[index];
+      if (item.date > latest.date ||
+          (item.date === latest.date && item.odometer > latest.odometer)) {
+        latest = item;
+      }
+    }
+    return latest.odometer;
+  }
+
   function showToast(message, type) {
     if (!el.toast) {
       return;
@@ -279,16 +347,38 @@
   }
 
   function getFuelings() {
-    return activeProfile().fuelings;
+    var profile = activeProfile();
+    return Array.isArray(profile.fuelings) ? profile.fuelings : [];
+  }
+
+  function getMaintenances() {
+    var profile = activeProfile();
+    return Array.isArray(profile.maintenances) ? profile.maintenances : [];
+  }
+
+  function countRecordsForProfile(profile) {
+    if (!profile) {
+      return 0;
+    }
+    var fuelings = Array.isArray(profile.fuelings) ? profile.fuelings : [];
+    var maintenances = Array.isArray(profile.maintenances) ? profile.maintenances : [];
+    return fuelings.length + maintenances.length;
+  }
+
+  function countAllRecords(sourceState) {
+    var target = sourceState || state;
+    if (!target || !Array.isArray(target.profiles)) {
+      return 0;
+    }
+    var total = 0;
+    for (var i = 0; i < target.profiles.length; i += 1) {
+      total += countRecordsForProfile(target.profiles[i]);
+    }
+    return total;
   }
 
   function countFuelings(sourceState) {
-    if (!sourceState || !Array.isArray(sourceState.profiles)) {
-      return 0;
-    }
-    return sourceState.profiles.reduce(function (total, profile) {
-      return total + (Array.isArray(profile.fuelings) ? profile.fuelings.length : 0);
-    }, 0);
+    return countAllRecords(sourceState);
   }
 
   /* ── Навигация ─────────────────────────────────────────── */
@@ -316,6 +406,9 @@
     if (name === 'charts') {
       renderCharts();
       renderStatsScreen();
+    }
+    if (name === 'maintenance') {
+      renderMaintenance();
     }
   }
 
@@ -346,6 +439,21 @@
 
   function bindDelegatedActions() {
     document.addEventListener('click', function (event) {
+      var addMaintenanceButton = event.target.closest('[data-action="add-maintenance"]');
+      if (addMaintenanceButton) {
+        openMaintenanceForm();
+        return;
+      }
+      var maintenanceEditButton = event.target.closest('button[data-maintenance-edit]');
+      if (maintenanceEditButton) {
+        openMaintenanceForm(maintenanceEditButton.getAttribute('data-maintenance-edit'));
+        return;
+      }
+      var maintenanceDeleteButton = event.target.closest('button[data-maintenance-delete]');
+      if (maintenanceDeleteButton) {
+        requestMaintenanceDelete(maintenanceDeleteButton.getAttribute('data-maintenance-delete'));
+        return;
+      }
       var editButton = event.target.closest('button[data-edit]');
       if (editButton) {
         openForm(editButton.getAttribute('data-edit'));
@@ -444,6 +552,16 @@
       ? 'за ' + stats.recordsCount + ' ' + plural(stats.recordsCount, 'заправку', 'заправки', 'заправок')
       : 'пока нет заправок';
 
+    var maintenanceStatsHome = C.calculateMaintenanceStats ? C.calculateMaintenanceStats(getMaintenances()) : { recordsCount: 0, totalCost: 0 };
+    if (el.statMaintenanceTotal) {
+      el.statMaintenanceTotal.textContent = C.formatMoney(maintenanceStatsHome.totalCost);
+    }
+    if (el.statMaintenanceNote) {
+      el.statMaintenanceNote.textContent = maintenanceStatsHome.recordsCount > 0
+        ? 'за ' + maintenanceStatsHome.recordsCount + ' ' + plural(maintenanceStatsHome.recordsCount, 'запись', 'записи', 'записей') + ' · за всё время'
+        : 'пока нет записей';
+    }
+
     if (fuelStats.costPerKm !== null) {
       el.statCostKm.textContent = C.formatMoney(fuelStats.costPerKm);
       el.statCostKmNote.textContent = 'на ' + C.formatNumber(fuelStats.distance, 0) +
@@ -534,6 +652,85 @@
           'Здесь будут все заправки. Начните с первой — это займёт меньше минуты.',
           true
         );
+  }
+
+  function maintenanceEmptyStateHtml() {
+    return (
+      '<div class="empty-state">' +
+        '<div class="empty-state-icon" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>' +
+          '</svg>' +
+        '</div>' +
+        '<strong>Обслуживания пока нет</strong>' +
+        '<span>Записывайте ремонт, замену масла, шиномонтаж и другие события — расходы будут считаться отдельно от топлива.</span>' +
+        '<button class="secondary-btn" type="button" data-action="add-maintenance">Добавить запись</button>' +
+      '</div>'
+    );
+  }
+
+  function renderMaintenance() {
+    if (!el.maintenanceList) {
+      return;
+    }
+    var allRecords = getMaintenances();
+    var records = C.sortedMaintenanceByDateDesc(allRecords);
+    var stats = C.calculateMaintenanceStats(allRecords);
+
+    el.maintenanceTotalAll.textContent = C.formatMoney(stats.totalCost);
+    if (stats.recordsCount > 0) {
+      el.maintenanceSummaryMeta.textContent =
+        stats.recordsCount + ' ' + plural(stats.recordsCount, 'запись', 'записи', 'записей') +
+        ' · запчасти ' + C.formatMoney(stats.totalParts) +
+        ' · работы ' + C.formatMoney(stats.totalLabor);
+    } else {
+      el.maintenanceSummaryMeta.textContent = 'пока нет записей';
+    }
+
+    if (!records.length) {
+      el.maintenanceList.innerHTML = maintenanceEmptyStateHtml();
+      return;
+    }
+
+    el.maintenanceList.innerHTML = records.map(function (item) {
+      var total = C.maintenanceTotal(item);
+      var parts = Number.isFinite(item.partsCost) ? item.partsCost : 0;
+      var labor = Number.isFinite(item.laborCost) ? item.laborCost : 0;
+      var meta = [];
+
+      if (parts > 0) {
+        meta.push('запчасти ' + C.formatMoney(parts));
+      }
+      if (labor > 0) {
+        meta.push('работы ' + C.formatMoney(labor));
+      }
+      if (!meta.length) {
+        meta.push('без затрат');
+      }
+      meta.push(C.formatNumber(item.odometer, 0) + ' км');
+
+      return '<article class="fuel-card service-card">' +
+        '<div class="fuel-top">' +
+          '<span class="fuel-date">' + escapeHtml(formatDate(item.date)) + '</span>' +
+          '<div class="fuel-actions">' +
+            '<button class="mini-btn" type="button" data-maintenance-edit="' + escapeHtml(item.id) + '" aria-label="Изменить запись обслуживания">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
+            '</button>' +
+            '<button class="mini-btn mini-danger" type="button" data-maintenance-delete="' + escapeHtml(item.id) + '" aria-label="Удалить запись обслуживания">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="fuel-line">' +
+          '<span class="fuel-station">' + escapeHtml(item.title) + '</span>' +
+          '<span class="fuel-total">' + C.formatMoney(total) + '</span>' +
+        '</div>' +
+        '<div class="fuel-meta">' +
+          meta.map(function (part) { return '<span>' + escapeHtml(part) + '</span>'; }).join('') +
+        '</div>' +
+        (item.note ? '<p class="fuel-note">' + escapeHtml(item.note).replace(/\n/g, '<br>') + '</p>' : '') +
+      '</article>';
+    }).join('');
   }
 
   /* ── Графики ───────────────────────────────────────────── */
@@ -697,8 +894,8 @@
       : '';
 
     var info = S.storageInfo();
-    var count = profile.fuelings.length;
-    var total = countFuelings(state);
+    var count = countRecordsForProfile(profile);
+    var total = countAllRecords(state);
     el.storageInfo.textContent = info.available
       ? 'В этом автомобиле: ' + count + ' ' + plural(count, 'запись', 'записи', 'записей') +
         ' · всего: ' + total + ' · ' + state.profiles.length + ' ' +
@@ -716,7 +913,7 @@
       }
 
       if (snapshot) {
-        var snapshotCount = countFuelings(snapshot.state);
+        var snapshotCount = countAllRecords(snapshot.state);
         el.restoreSnapshotBtn.hidden = false;
         el.snapshotInfo.textContent = 'Последняя копия: ' +
           formatSnapshotDate(snapshot.createdAt) + ', ' +
@@ -814,14 +1011,14 @@
         return null;
       }
 
-      var importedCount = countFuelings(imported);
+      var importedCount = countAllRecords(imported);
       return askConfirm({
         title: 'Импортировать данные?',
         message: 'Будет загружено ' + imported.profiles.length + ' ' +
           plural(imported.profiles.length, 'автомобиль', 'автомобиля', 'автомобилей') +
           ' и ' + importedCount + ' ' +
           plural(importedCount, 'запись', 'записи', 'записей') +
-          '. Текущие данные (' + countFuelings(state) + ') будут заменены. ' +
+          '. Текущие данные (' + countAllRecords(state) + ') будут заменены. ' +
           'Перед импортом автоматически создаётся страховочная копия.',
         confirmLabel: 'Импортировать'
       }).then(function (confirmed) {
@@ -864,7 +1061,7 @@
   function requestClearAll() {
     askConfirm({
       title: 'Удалить все данные?',
-      message: 'Все автомобили, заправки и настройки будут удалены с этого устройства. ' +
+      message: 'Все автомобили, заправки, обслуживание и настройки будут удалены с этого устройства. ' +
         'Перед удалением автоматически создаётся страховочная копия — её можно будет восстановить.',
       confirmLabel: 'Удалить всё'
     }).then(function (confirmed) {
@@ -1312,6 +1509,222 @@
     showToast(existing ? 'Заправка изменена' : 'Заправка сохранена');
   }
 
+  /* ── Обслуживание: форма ───────────────────────────────── */
+
+  function parseCostInput(input) {
+    var raw = input.value.trim();
+    if (!raw) {
+      return 0;
+    }
+    return C.parseNumber(raw);
+  }
+
+  function updateMaintenanceTotalPreview() {
+    if (!el.maintenanceFormTotal) {
+      return;
+    }
+    var parts = parseCostInput(el.maintenanceParts);
+    var labor = parseCostInput(el.maintenanceLabor);
+    var total = (parts === null ? 0 : parts) + (labor === null ? 0 : labor);
+    el.maintenanceFormTotal.textContent = C.formatMoney(total);
+  }
+
+  function clearMaintenanceFormErrors() {
+    Array.prototype.forEach.call(el.maintenanceForm.querySelectorAll('.input-wrap.is-invalid'), function (wrap) {
+      wrap.classList.remove('is-invalid');
+    });
+    el.maintenanceFormError.textContent = '';
+  }
+
+  function maintenanceFormError(message, input) {
+    el.maintenanceFormError.textContent = message;
+    if (input) {
+      var wrap = input.closest('.input-wrap');
+      if (wrap) {
+        wrap.classList.add('is-invalid');
+      }
+      input.focus();
+      input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    return null;
+  }
+
+  function openMaintenanceForm(id) {
+    var record = null;
+    editingMaintenanceId = id || null;
+
+    if (editingMaintenanceId) {
+      record = findMaintenance(editingMaintenanceId);
+      if (!record) {
+        showToast('Запись обслуживания не найдена.', 'error');
+        editingMaintenanceId = null;
+        return;
+      }
+    }
+
+    clearMaintenanceFormErrors();
+
+    if (record) {
+      el.maintenanceSheetTitle.textContent = 'Изменить запись';
+      el.maintenanceDeleteBtn.hidden = false;
+      el.maintenanceDate.value = record.date;
+      el.maintenanceOdometer.value = C.formatNumber(record.odometer, 0);
+      el.maintenanceTitle.value = record.title;
+      el.maintenanceParts.value = record.partsCost > 0 ? C.formatAmount(record.partsCost, 2) : '';
+      el.maintenanceLabor.value = record.laborCost > 0 ? C.formatAmount(record.laborCost, 2) : '';
+      el.maintenanceNote.value = record.note || '';
+    } else {
+      var odometer = latestKnownOdometer();
+      el.maintenanceSheetTitle.textContent = 'Новая запись';
+      el.maintenanceDeleteBtn.hidden = true;
+      el.maintenanceDate.value = todayIso();
+      el.maintenanceOdometer.value = odometer !== null ? String(Math.round(odometer)) : '';
+      el.maintenanceTitle.value = '';
+      el.maintenanceParts.value = '';
+      el.maintenanceLabor.value = '';
+      el.maintenanceNote.value = '';
+    }
+
+    updateMaintenanceTotalPreview();
+    el.maintenanceForm.scrollTop = 0;
+    if (el.maintenanceSheet.querySelector('.fuel-form')) {
+      el.maintenanceSheet.querySelector('.fuel-form').scrollTop = 0;
+    }
+    el.maintenanceSheet.inert = false;
+    el.maintenanceSheet.classList.add('is-open');
+    el.maintenanceSheet.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('sheet-open');
+  }
+
+  function closeMaintenanceForm() {
+    if (document.activeElement && el.maintenanceSheet.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    el.maintenanceSheet.classList.remove('is-open');
+    el.maintenanceSheet.inert = true;
+    el.maintenanceSheet.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('sheet-open');
+    editingMaintenanceId = null;
+    clearMaintenanceFormErrors();
+  }
+
+  function handleMaintenanceSubmit(event) {
+    event.preventDefault();
+    clearMaintenanceFormErrors();
+
+    var date = el.maintenanceDate.value;
+    var odometerRaw = el.maintenanceOdometer.value.replace(/\D/g, '');
+    var odometer = C.parseNumber(odometerRaw);
+    var title = el.maintenanceTitle.value.trim();
+    var parts = parseCostInput(el.maintenanceParts);
+    var labor = parseCostInput(el.maintenanceLabor);
+
+    if (!date || !C.isValidDateString(date)) {
+      return maintenanceFormError('Укажите дату обслуживания.', el.maintenanceDate);
+    }
+    if (date > todayIso()) {
+      return maintenanceFormError('Дата не может быть в будущем.', el.maintenanceDate);
+    }
+    if (odometer === null || odometer <= 0) {
+      return maintenanceFormError('Введите пробег больше нуля.', el.maintenanceOdometer);
+    }
+    if (!title) {
+      return maintenanceFormError('Укажите работу или событие.', el.maintenanceTitle);
+    }
+    if (parts === null) {
+      return maintenanceFormError('Стоимость запчастей должна быть числом.', el.maintenanceParts);
+    }
+    if (labor === null) {
+      return maintenanceFormError('Стоимость работ должна быть числом.', el.maintenanceLabor);
+    }
+
+    var existing = editingMaintenanceId ? findMaintenance(editingMaintenanceId) : null;
+    var record = {
+      id: existing ? existing.id : S.makeId(),
+      date: date,
+      odometer: Math.round(odometer),
+      title: title.slice(0, 120),
+      partsCost: parts,
+      laborCost: labor,
+      note: el.maintenanceNote.value.trim().slice(0, 500),
+      createdAt: existing ? existing.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    var next = cloneState(state);
+    var nextProfile = activeProfileIn(next);
+    if (!Array.isArray(nextProfile.maintenances)) {
+      nextProfile.maintenances = [];
+    }
+    var nextRecords = nextProfile.maintenances;
+    var index = -1;
+
+    if (existing) {
+      for (var itemIndex = 0; itemIndex < nextRecords.length; itemIndex += 1) {
+        if (nextRecords[itemIndex].id === existing.id) {
+          index = itemIndex;
+          break;
+        }
+      }
+      if (index === -1) {
+        showToast('Запись обслуживания не найдена. Обновите список.', 'error');
+        return;
+      }
+      nextRecords[index] = record;
+    } else {
+      nextRecords.push(record);
+    }
+    nextProfile.updatedAt = new Date().toISOString();
+
+    if (!commitState(next, existing ? 'Изменения не сохранены' : 'Запись не сохранена')) {
+      return;
+    }
+    renderAll();
+    closeMaintenanceForm();
+    showScreen('maintenance');
+    showToast(existing ? 'Запись изменена' : 'Запись добавлена');
+  }
+
+  function bindMaintenanceForm() {
+    if (!el.maintenanceForm) {
+      return;
+    }
+
+    [el.maintenanceParts, el.maintenanceLabor].forEach(function (input) {
+      input.addEventListener('input', function () {
+        sanitizeNumericInput(input);
+        clearFieldError(input);
+        el.maintenanceFormError.textContent = '';
+        updateMaintenanceTotalPreview();
+      });
+    });
+
+    el.maintenanceOdometer.addEventListener('input', function () {
+      var cleaned = el.maintenanceOdometer.value.replace(/[^\d]/g, '');
+      if (cleaned !== el.maintenanceOdometer.value) {
+        el.maintenanceOdometer.value = cleaned;
+      }
+      clearFieldError(el.maintenanceOdometer);
+      el.maintenanceFormError.textContent = '';
+    });
+
+    [el.maintenanceDate, el.maintenanceTitle, el.maintenanceNote].forEach(function (input) {
+      input.addEventListener('input', function () {
+        clearFieldError(input);
+        el.maintenanceFormError.textContent = '';
+      });
+    });
+
+    el.maintenanceSheetClose.addEventListener('click', closeMaintenanceForm);
+    el.maintenanceFormCancel.addEventListener('click', closeMaintenanceForm);
+    el.maintenanceForm.addEventListener('submit', handleMaintenanceSubmit);
+    el.maintenanceDeleteBtn.addEventListener('click', function () {
+      if (editingMaintenanceId) {
+        requestMaintenanceDelete(editingMaintenanceId, true);
+      }
+    });
+  }
+
   function formError(message, input) {
     el.formError.textContent = message;
     if (input) {
@@ -1372,6 +1785,40 @@
     });
   }
 
+  function requestMaintenanceDelete(id, fromSheet) {
+    var record = findMaintenance(id);
+    if (!record) {
+      return;
+    }
+    var description = formatDate(record.date) + ' · ' + record.title +
+      ' · ' + C.formatMoney(C.maintenanceTotal(record));
+
+    askConfirm({
+      title: 'Удалить запись обслуживания?',
+      message: description + '. Это действие нельзя отменить.',
+      confirmLabel: 'Удалить'
+    }).then(function (confirmed) {
+      if (!confirmed) {
+        return;
+      }
+      var next = cloneState(state);
+      var nextProfile = activeProfileIn(next);
+      nextProfile.maintenances = (Array.isArray(nextProfile.maintenances) ? nextProfile.maintenances : []).filter(function (item) {
+        return item.id !== id;
+      });
+      nextProfile.updatedAt = new Date().toISOString();
+
+      if (!commitState(next, 'Запись не удалена')) {
+        return;
+      }
+      renderAll();
+      if (fromSheet) {
+        closeMaintenanceForm();
+      }
+      showToast('Запись обслуживания удалена');
+    });
+  }
+
   /* ── Автомобили ────────────────────────────────────────── */
 
   function profileInitials(name) {
@@ -1397,7 +1844,7 @@
     var canDelete = state.profiles.length > 1;
     el.profilesList.innerHTML = state.profiles.map(function (item) {
       var active = item.id === profile.id;
-      var count = item.fuelings.length;
+      var count = countRecordsForProfile(item);
       var check = active
         ? '<span class="profile-check" aria-hidden="true">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>' +
@@ -1495,9 +1942,12 @@
       return;
     }
 
+    var fuelingsCount = Array.isArray(profile.fuelings) ? profile.fuelings.length : 0;
+    var maintenancesCount = Array.isArray(profile.maintenances) ? profile.maintenances.length : 0;
     askConfirm({
       title: 'Удалить автомобиль?',
-      message: 'Профиль «' + profile.name + '» и его заправки (' + profile.fuelings.length +
+      message: 'Профиль «' + profile.name + '», его заправки (' + fuelingsCount +
+        ') и обслуживание (' + maintenancesCount +
         ') будут удалены. Это действие нельзя отменить.',
       confirmLabel: 'Удалить'
     }).then(function (confirmed) {
@@ -1638,6 +2088,10 @@
       }
       if (el.sheet.classList.contains('is-open')) {
         closeForm();
+        return;
+      }
+      if (el.maintenanceSheet && el.maintenanceSheet.classList.contains('is-open')) {
+        closeMaintenanceForm();
       }
     });
   }
@@ -1647,6 +2101,7 @@
   function renderAll() {
     renderHome();
     renderHistory();
+    renderMaintenance();
     renderCharts();
     renderStatsScreen();
     renderSettings();

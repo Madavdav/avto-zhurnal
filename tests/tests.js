@@ -72,6 +72,19 @@
     };
   }
 
+  function maintenance(date, odometer, title, partsCost, laborCost, note) {
+    return {
+      id: 'm-' + date + '-' + odometer,
+      date: date,
+      odometer: odometer,
+      title: title,
+      partsCost: partsCost,
+      laborCost: laborCost,
+      note: note || '',
+      createdAt: date + 'T09:00:00.000Z'
+    };
+  }
+
   function memoryStore(initialData) {
     var data = Object.create(null);
     if (initialData) {
@@ -925,6 +938,242 @@
         record.total = 0;
       }));
     }, 'нулевая цена должна быть отклонена');
+  });
+
+  /* ── Обслуживание ─────────────────────────────────────── */
+
+  test('Обслуживание', 'Итог складывает запчасти и работы', function () {
+    same(C.maintenanceTotal(maintenance('2026-10-01', 1000, 'Масло', 120.5, 300)), 420.5);
+    same(C.maintenanceTotal(maintenance('2026-10-01', 1000, 'Проверка', 0, 0)), 0);
+    same(C.maintenanceTotal({}), 0, 'без затрат');
+  });
+
+  test('Обслуживание', 'Невалидные записи не попадают в статистику', function () {
+    var records = [
+      maintenance('2026-10-01', 1000, 'Масло', 100, 200),
+      maintenance('', 1100, 'Без даты', 100, 0),
+      maintenance('2026-10-02', -5, 'Минус', 100, 0),
+      maintenance('2026-10-03', 1200, '   ', 100, 0)
+    ];
+    var stats = C.calculateMaintenanceStats(records);
+    same(stats.recordsCount, 1);
+    same(stats.totalCost, 300);
+    same(C.isValidMaintenance(records[0]), true);
+    same(C.isValidMaintenance(records[1]), false);
+    same(C.isValidMaintenance(records[2]), false);
+    same(C.isValidMaintenance(records[3]), false);
+  });
+
+  test('Обслуживание', 'История сортируется по дате и пробегу', function () {
+    var records = [
+      maintenance('2026-09-01', 1000, 'Старое', 10, 0),
+      maintenance('2026-10-01', 2000, 'Новое', 20, 0),
+      maintenance('2026-10-01', 2100, 'Новое с большим пробегом', 30, 0)
+    ];
+    var sorted = C.sortedMaintenanceByDateDesc(records);
+    same(sorted.length, 3);
+    same(sorted[0].title, 'Новое с большим пробегом');
+    same(sorted[1].title, 'Новое');
+    same(sorted[2].title, 'Старое');
+  });
+
+  test('Обслуживание', 'Общая статистика отдельно от топлива', function () {
+    var records = [
+      maintenance('2026-09-01', 1000, 'Масло', 120.5, 300),
+      maintenance('2026-10-01', 1500, 'Шины', 800, 250),
+      maintenance('2026-10-02', 1600, 'Проверка', 0, 0)
+    ];
+    var stats = C.calculateMaintenanceStats(records);
+    same(stats.recordsCount, 3);
+    same(stats.totalParts, 920.5);
+    same(stats.totalLabor, 550);
+    same(stats.totalCost, 1470.5);
+    same(stats.firstDate, '2026-09-01');
+    same(stats.lastDate, '2026-10-02');
+    same(stats.lastOdometer, 1600);
+  });
+
+  test('Профили', 'У нового автомобиля пустой журнал обслуживания', function () {
+    var profile = S.createProfile('Рабочая', 85000);
+    ok(Array.isArray(profile.maintenances), 'список обслуживания есть');
+    same(profile.maintenances.length, 0);
+  });
+
+  test('Профили', 'Обслуживание хранится отдельно для каждого автомобиля', function () {
+    var state = S.normalizeState({
+      schemaVersion: 2,
+      activeProfileId: 'p2',
+      profiles: [{
+        id: 'p1',
+        name: 'Своя',
+        initialOdometer: 1000,
+        fuelings: [fueling('2026-10-01', 1100, 40, 120, true)],
+        maintenances: [maintenance('2026-10-01', 1100, 'Масло своей', 100, 200)]
+      }, {
+        id: 'p2',
+        name: 'Рабочая',
+        initialOdometer: 2000,
+        fuelings: [fueling('2026-10-02', 2100, 50, 150, true)],
+        maintenances: [maintenance('2026-10-02', 2100, 'Ремонт рабочей', 400, 500)]
+      }]
+    });
+
+    same(state.profiles[0].maintenances.length, 1);
+    same(state.profiles[1].maintenances.length, 1);
+    same(state.profiles[0].maintenances[0].title, 'Масло своей');
+    same(state.profiles[1].maintenances[0].title, 'Ремонт рабочей');
+
+    var restored = S.parseBackup(S.backupJson(state));
+    same(restored.profiles[0].maintenances[0].partsCost, 100);
+    same(restored.profiles[1].maintenances[0].laborCost, 500);
+  });
+
+  test('Резервные копии', 'Старая копия без обслуживания открывается', function () {
+    var oldCopy = {
+      app: 'auto-log',
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [fueling('2026-10-01', 1100, 40, 120, true)]
+      }]
+    };
+    var restored = S.parseBackup(JSON.stringify(oldCopy));
+    same(restored.profiles[0].fuelings.length, 1);
+    ok(Array.isArray(restored.profiles[0].maintenances), 'добавлен пустой список обслуживания');
+    same(restored.profiles[0].maintenances.length, 0);
+
+    var backup = JSON.parse(S.backupJson(restored));
+    ok(Array.isArray(backup.profiles[0].maintenances), 'в новой копии есть список обслуживания');
+  });
+
+  test('Резервные копии', 'Обслуживание сохраняется и восстанавливается', function () {
+    var record = maintenance('2026-10-05', 1400, 'Тормозные колодки', 350.25, 500.75, 'Передние');
+    record.createdAt = '2026-10-05T09:00:00.000Z';
+    record.updatedAt = '2026-10-05T10:00:00.000Z';
+    var state = S.normalizeState({
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [],
+        maintenances: [record]
+      }]
+    });
+
+    var restored = S.parseBackup(S.backupJson(state));
+    same(restored.profiles[0].maintenances.length, 1);
+    same(restored.profiles[0].maintenances[0].title, 'Тормозные колодки');
+    same(restored.profiles[0].maintenances[0].partsCost, 350.25);
+    same(restored.profiles[0].maintenances[0].laborCost, 500.75);
+    same(restored.profiles[0].maintenances[0].note, 'Передние');
+  });
+
+  test('Хранение', 'Страховочная копия считает обслуживание', function () {
+    var store = memoryStore();
+    var state = S.normalizeState({
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [fueling('2026-10-01', 1100, 40, 120, true)],
+        maintenances: [maintenance('2026-10-02', 1200, 'Масло', 100, 200)]
+      }]
+    });
+
+    same(S.save(state, store), true);
+    var snapshot = S.createSnapshot(state, 'before-import', store);
+    ok(snapshot, 'копия создана');
+    same(snapshot.records, 2, 'заправка и обслуживание');
+
+    var restored = S.restoreSnapshot(store);
+    ok(restored, 'копия восстановлена');
+    same(restored.state.profiles[0].maintenances.length, 1);
+    same(restored.state.profiles[0].maintenances[0].title, 'Масло');
+  });
+
+  test('Хранение', 'Старые данные при загрузке получают журнал обслуживания', function () {
+    var oldState = {
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [fueling('2026-10-01', 1100, 40, 120, true)]
+      }]
+    };
+    var initial = {};
+    initial[S.STORAGE_KEY] = JSON.stringify(oldState);
+    var store = memoryStore(initial);
+
+    var loaded = S.load(store);
+    ok(Array.isArray(loaded.profiles[0].maintenances), 'в памяти есть список');
+    same(loaded.profiles[0].maintenances.length, 0);
+
+    var saved = JSON.parse(store.getItem(S.STORAGE_KEY));
+    ok(Array.isArray(saved.profiles[0].maintenances), 'миграция записана на диск');
+    same(saved.profiles[0].fuelings.length, 1, 'заправки сохранены');
+  });
+
+  test('Импорт', 'Обслуживание с будущей датой, пустым названием и минусом отклоняется', function () {
+    function importMaintenance(change) {
+      var record = maintenance('2026-10-01', 1100, 'Масло', 100, 200);
+      change(record);
+      return JSON.stringify({
+        app: 'auto-log',
+        schemaVersion: 2,
+        profiles: [{
+          id: 'p1',
+          name: 'Моя машина',
+          initialOdometer: 1000,
+          fuelings: [],
+          maintenances: [record]
+        }]
+      });
+    }
+
+    throws(function () {
+      S.parseBackup(importMaintenance(function (record) { record.date = '2999-01-01'; }));
+    }, 'будущая дата должна быть отклонена');
+
+    throws(function () {
+      S.parseBackup(importMaintenance(function (record) { record.title = '   '; }));
+    }, 'пустое название должно быть отклонено');
+
+    throws(function () {
+      S.parseBackup(importMaintenance(function (record) { record.partsCost = -1; }));
+    }, 'минус в запчастях должен быть отклонён');
+
+    throws(function () {
+      S.parseBackup(importMaintenance(function (record) { record.laborCost = -1; }));
+    }, 'минус в работах должен быть отклонён');
+  });
+
+  test('Импорт', 'Повторяющиеся ID обслуживания отклоняются', function () {
+    var first = maintenance('2026-10-01', 1100, 'Масло', 100, 200);
+    var second = maintenance('2026-10-02', 1200, 'Шины', 300, 0);
+    second.id = first.id;
+
+    throws(function () {
+      S.parseBackup(JSON.stringify({
+        app: 'auto-log',
+        schemaVersion: 2,
+        profiles: [{
+          id: 'p1',
+          name: 'Моя машина',
+          initialOdometer: 1000,
+          fuelings: [],
+          maintenances: [first, second]
+        }]
+      }));
+    }, 'повторяющийся ID должен быть отклонён');
   });
 
   /* ── Вывод результатов ────────────────────────────────── */

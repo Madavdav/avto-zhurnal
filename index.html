@@ -125,13 +125,29 @@
               </svg>
             </div>
             <div class="stat-wide-text">
-              <span class="stat-label">Всего потрачено</span>
+              <span class="stat-label">Всего на топливо</span>
               <p class="stat-note" id="stat-total-note">пока нет заправок</p>
             </div>
             <div class="stat-value-row">
               <strong class="stat-value stat-value-money" id="stat-total">—</strong>
             </div>
           </article>
+
+          <button class="stat-card stat-wide stat-card-link" type="button" data-nav="maintenance">
+            <div class="stat-icon stat-icon-service" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+              </svg>
+            </div>
+            <div class="stat-wide-text">
+              <span class="stat-label">Обслуживание</span>
+              <p class="stat-note" id="stat-maintenance-note">пока нет записей</p>
+            </div>
+            <div class="stat-value-row">
+              <strong class="stat-value" id="stat-maintenance-total">—</strong>
+              <svg class="stat-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </div>
+          </button>
         </div>
 
         <div class="section-head">
@@ -222,6 +238,32 @@
         <p class="fineprint">Расход считается только между заправками «до полного». Частичные заправки не искажают результат: их литры добавляются к следующему полному баку.</p>
       </section>
 
+      <!-- ОБСЛУЖИВАНИЕ -->
+      <section class="screen" id="screen-maintenance" data-screen="maintenance">
+        <div class="screen-head">
+          <div>
+            <p class="eyebrow">Сервис</p>
+            <h1>Обслуживание</h1>
+          </div>
+          <button class="round-btn" type="button" data-action="add-maintenance" aria-label="Добавить запись обслуживания">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+        <article class="stats-summary maintenance-summary">
+          <div class="stats-summary-top">
+            <div class="stats-summary-main">
+              <span class="stat-label">Расходы на обслуживание</span>
+              <strong class="stats-total" id="maintenance-total-all">—</strong>
+            </div>
+          </div>
+          <p class="stats-summary-meta" id="maintenance-summary-meta">пока нет записей</p>
+        </article>
+        <div class="section-head">
+          <h2>История</h2>
+        </div>
+        <div class="fuel-list" id="maintenance-list"></div>
+      </section>
+
       <!-- НАСТРОЙКИ -->
       <section class="screen" id="screen-settings" data-screen="settings">
         <div class="screen-head">
@@ -287,12 +329,12 @@
 
         <article class="settings-card">
           <h2>Опасная зона</h2>
-          <p class="settings-note">Удаляет все автомобили, заправки и настройки на этом устройстве. Сначала лучше сделать резервную копию.</p>
+          <p class="settings-note">Удаляет все автомобили, заправки, обслуживание и настройки на этом устройстве. Сначала лучше сделать резервную копию.</p>
           <button class="danger-btn" type="button" id="clear-btn">Удалить все данные</button>
         </article>
 
         <footer class="app-footer">
-          АвтоЖурнал · версия 2.2.0<br>
+          АвтоЖурнал · версия 2.3.0<br>
           Данные не покидают ваше устройство.
         </footer>
       </section>
@@ -310,13 +352,15 @@
       <button class="nav-add" type="button" data-action="add" aria-label="Добавить заправку">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
+      <button class="nav-item" type="button" data-nav="maintenance" aria-label="Обслуживание">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
+        <span>Сервис</span>
+      </button>
       <button class="nav-item" type="button" data-nav="charts" aria-label="Статистика">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-7M12 20V5M19 20v-10"/><path d="M3 20h18"/></svg>
         <span>Статистика</span>
-      </button>
-      <button class="nav-item" type="button" data-nav="settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="17" r="2.2"/></svg>
-        <span>Ещё</span>
       </button>
     </nav>
   </div>
@@ -489,6 +533,84 @@
         <button class="ghost-btn" type="button" id="confirm-cancel">Отмена</button>
         <button class="danger-solid" type="button" id="confirm-ok">Удалить</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ФОРМА ОБСЛУЖИВАНИЯ -->
+  <div class="sheet" id="maintenance-sheet" aria-hidden="true">
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="maintenance-sheet-title">
+      <header class="sheet-header">
+        <button class="icon-btn" type="button" id="maintenance-sheet-close" aria-label="Закрыть форму">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="sheet-title-group">
+          <p class="eyebrow">Сервис</p>
+          <h2 id="maintenance-sheet-title">Запись обслуживания</h2>
+        </div>
+        <button class="icon-btn icon-btn-danger" type="button" id="maintenance-delete" aria-label="Удалить запись" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg>
+        </button>
+      </header>
+
+      <form class="fuel-form" id="maintenance-form" novalidate>
+        <label class="field" for="maintenance-date">
+          <span class="field-label">Дата</span>
+          <span class="input-wrap">
+            <input id="maintenance-date" type="date" required>
+          </span>
+        </label>
+
+        <label class="field" for="maintenance-odometer">
+          <span class="field-label">Пробег</span>
+          <span class="input-wrap">
+            <input id="maintenance-odometer" type="text" inputmode="numeric" autocomplete="off" placeholder="130000" required>
+            <span class="input-suffix">км</span>
+          </span>
+        </label>
+
+        <label class="field" for="maintenance-title">
+          <span class="field-label">Работа или событие</span>
+          <span class="input-wrap">
+            <input id="maintenance-title" type="text" maxlength="120" autocomplete="off" placeholder="Замена масла, шиномонтаж, страховка" required>
+          </span>
+        </label>
+
+        <div class="calc-row">
+          <label class="field" for="maintenance-parts">
+            <span class="field-label">Запчасти</span>
+            <span class="input-wrap">
+              <input id="maintenance-parts" type="text" inputmode="decimal" autocomplete="off" placeholder="0">
+              <span class="input-suffix">₪</span>
+            </span>
+          </label>
+          <label class="field" for="maintenance-labor">
+            <span class="field-label">Работы</span>
+            <span class="input-wrap">
+              <input id="maintenance-labor" type="text" inputmode="decimal" autocomplete="off" placeholder="0">
+              <span class="input-suffix">₪</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="service-total-preview">
+          <span>Итого</span>
+          <strong id="maintenance-form-total">0,00 ₪</strong>
+        </div>
+
+        <label class="field" for="maintenance-note">
+          <span class="field-label">Заметка</span>
+          <span class="input-wrap input-wrap-textarea">
+            <textarea id="maintenance-note" rows="3" maxlength="500" placeholder="Масло, фильтр, детали"></textarea>
+          </span>
+        </label>
+
+        <p class="form-error" id="maintenance-form-error" role="alert"></p>
+
+        <div class="form-actions">
+          <button class="ghost-btn" type="button" id="maintenance-form-cancel">Отмена</button>
+          <button class="primary-btn" type="submit">Сохранить</button>
+        </div>
+      </form>
     </div>
   </div>
 

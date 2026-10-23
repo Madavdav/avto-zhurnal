@@ -74,6 +74,7 @@
       name: normalizeProfileName(name, 0),
       initialOdometer: normalizeInitialOdometer(initialOdometer, false),
       fuelings: [],
+      maintenances: [],
       createdAt: now,
       updatedAt: now
     };
@@ -205,7 +206,68 @@
     };
   }
 
-  function normalizeProfile(raw, index, seenIds, options, seenFuelingIds) {
+  function normalizeMaintenance(raw, index, options, seenMaintenanceIds) {
+    var prefix = 'Обслуживание №' + (index + 1) + ': ';
+    var strict = Boolean(options && options.strict);
+    if (!raw || typeof raw !== 'object') {
+      throw new Error(prefix + 'ожидался объект.');
+    }
+    if (!global.MuranoCalc || !global.MuranoCalc.isValidDateString(raw.date)) {
+      throw new Error(prefix + 'неверная или пустая дата.');
+    }
+    if (strict && raw.date > (options.today || todayIso())) {
+      throw new Error(prefix + 'дата не может быть в будущем.');
+    }
+    if (!isFiniteNonNegative(raw.odometer)) {
+      throw new Error(prefix + 'пробег должен быть неотрицательным числом.');
+    }
+    if (strict && raw.odometer <= 0) {
+      throw new Error(prefix + 'пробег должен быть больше нуля.');
+    }
+
+    var title = typeof raw.title === 'string' ? raw.title.trim().slice(0, 120) : '';
+    if (!title) {
+      throw new Error(prefix + 'нужно название работы или события.');
+    }
+
+    if (strict && raw.partsCost !== undefined && raw.partsCost !== null &&
+        !isFiniteNonNegative(raw.partsCost)) {
+      throw new Error(prefix + 'стоимость запчастей должна быть неотрицательным числом.');
+    }
+    if (strict && raw.laborCost !== undefined && raw.laborCost !== null &&
+        !isFiniteNonNegative(raw.laborCost)) {
+      throw new Error(prefix + 'стоимость работ должна быть неотрицательным числом.');
+    }
+
+    var note = typeof raw.note === 'string' ? raw.note.trim().slice(0, 500) : '';
+    var id = typeof raw.id === 'string' && raw.id ? raw.id : makeId();
+
+    if (seenMaintenanceIds) {
+      if (seenMaintenanceIds[id]) {
+        if (strict) {
+          throw new Error(prefix + 'повторяющийся ID записи.');
+        }
+        do {
+          id = makeId();
+        } while (seenMaintenanceIds[id]);
+      }
+      seenMaintenanceIds[id] = true;
+    }
+
+    return {
+      id: id,
+      date: raw.date,
+      odometer: raw.odometer,
+      title: title,
+      partsCost: isFiniteNonNegative(raw.partsCost) ? raw.partsCost : 0,
+      laborCost: isFiniteNonNegative(raw.laborCost) ? raw.laborCost : 0,
+      note: note,
+      createdAt: typeof raw.createdAt === 'string' && raw.createdAt ? raw.createdAt : nowIso(),
+      updatedAt: typeof raw.updatedAt === 'string' && raw.updatedAt ? raw.updatedAt : nowIso()
+    };
+  }
+
+  function normalizeProfile(raw, index, seenIds, options, seenFuelingIds, seenMaintenanceIds) {
     var strict = Boolean(options && options.strict);
     if (!raw || typeof raw !== 'object') {
       throw new Error('Профиль №' + (index + 1) + ': ожидался объект.');
@@ -214,6 +276,9 @@
     var name = normalizeProfileName(raw.name, index);
     if (!Array.isArray(raw.fuelings)) {
       throw new Error('В профиле «' + name + '» нет списка заправок.');
+    }
+    if (strict && raw.maintenances !== undefined && !Array.isArray(raw.maintenances)) {
+      throw new Error('В профиле «' + name + '» неверный список обслуживания.');
     }
     if (strict && raw.initialOdometer !== undefined && raw.initialOdometer !== null &&
         raw.initialOdometer !== '' && !isFiniteNonNegative(raw.initialOdometer)) {
@@ -243,6 +308,9 @@
       fuelings: raw.fuelings.map(function (item, itemIndex) {
         return normalizeFueling(item, itemIndex, options, seenFuelingIds);
       }),
+      maintenances: (Array.isArray(raw.maintenances) ? raw.maintenances : []).map(function (item, itemIndex) {
+        return normalizeMaintenance(item, itemIndex, options, seenMaintenanceIds);
+      }),
       createdAt: createdAt,
       updatedAt: updatedAt
     };
@@ -256,11 +324,12 @@
     var source = raw.data && typeof raw.data === 'object' ? raw.data : raw;
     var profiles = [];
     var seenFuelingIds = Object.create(null);
+    var seenMaintenanceIds = Object.create(null);
 
     if (Array.isArray(source.profiles)) {
       var seenIds = Object.create(null);
       profiles = source.profiles.map(function (profile, index) {
-        return normalizeProfile(profile, index, seenIds, options, seenFuelingIds);
+        return normalizeProfile(profile, index, seenIds, options, seenFuelingIds, seenMaintenanceIds);
       });
     } else if (Array.isArray(source.fuelings)) {
       // Старый формат (schemaVersion 1): один автомобиль без профилей.
@@ -272,7 +341,7 @@
           name: DEFAULT_PROFILE_NAME,
           initialOdometer: normalizeInitialOdometer(settings.initialOdometer, true),
           fuelings: source.fuelings
-        }, 0, Object.create(null), options, seenFuelingIds)
+        }, 0, Object.create(null), options, seenFuelingIds, seenMaintenanceIds)
       ];
     } else {
       throw new Error('В файле нет списка автомобилей или заправок.');
@@ -321,7 +390,12 @@
 
       // Сразу сохраняем новый формат, чтобы миграция не зависела от того,
       // изменит ли пользователь что-то в текущей сессии.
-      if (parsed.schemaVersion !== SCHEMA_VERSION || !Array.isArray(parsed.profiles)) {
+      var needsMigration = parsed.schemaVersion !== SCHEMA_VERSION ||
+        !Array.isArray(parsed.profiles) ||
+        parsed.profiles.some(function (profile) {
+          return profile && typeof profile === 'object' && !Array.isArray(profile.maintenances);
+        });
+      if (needsMigration) {
         try {
           storage.setItem(STORAGE_KEY, JSON.stringify(normalized));
         } catch (ignored) {
@@ -389,7 +463,8 @@
       createdAt: snapshot.createdAt,
       reason: snapshot.reason,
       records: snapshot.state.profiles.reduce(function (total, profile) {
-        return total + profile.fuelings.length;
+        return total + (Array.isArray(profile.fuelings) ? profile.fuelings.length : 0) +
+          (Array.isArray(profile.maintenances) ? profile.maintenances.length : 0);
       }, 0)
     };
   }

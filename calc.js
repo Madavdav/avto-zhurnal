@@ -264,6 +264,67 @@
     );
   }
 
+  function isValidMaintenance(item) {
+    return Boolean(
+      item &&
+      typeof item === 'object' &&
+      Number.isFinite(item.odometer) &&
+      item.odometer >= 0 &&
+      typeof item.title === 'string' &&
+      item.title.trim() &&
+      isValidDateString(item.date)
+    );
+  }
+
+  function maintenanceTotal(item) {
+    var record = item || {};
+    var parts = nonNegative(record.partsCost);
+    var labor = nonNegative(record.laborCost);
+    return (parts === null ? 0 : parts) + (labor === null ? 0 : labor);
+  }
+
+  function sortedMaintenanceByDateDesc(maintenances) {
+    return (Array.isArray(maintenances) ? maintenances : [])
+      .filter(isValidMaintenance)
+      .slice()
+      .sort(function (a, b) {
+        if (a.date !== b.date) {
+          return a.date < b.date ? 1 : -1;
+        }
+        if (a.odometer !== b.odometer) {
+          return b.odometer - a.odometer;
+        }
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+      });
+  }
+
+  /**
+   * Общие расходы на обслуживание. Считается отдельно от топлива:
+   * запчасти и работы складываются по каждой записи.
+   */
+  function calculateMaintenanceStats(maintenances) {
+    var records = sortedMaintenanceByDateDesc(maintenances);
+    var totalParts = 0;
+    var totalLabor = 0;
+
+    records.forEach(function (item) {
+      var parts = nonNegative(item.partsCost);
+      var labor = nonNegative(item.laborCost);
+      totalParts += parts === null ? 0 : parts;
+      totalLabor += labor === null ? 0 : labor;
+    });
+
+    return {
+      recordsCount: records.length,
+      totalParts: totalParts,
+      totalLabor: totalLabor,
+      totalCost: totalParts + totalLabor,
+      firstDate: records.length ? records[records.length - 1].date : null,
+      lastDate: records.length ? records[0].date : null,
+      lastOdometer: records.length ? records[0].odometer : null
+    };
+  }
+
   function sortedByOdometer(fuelings) {
     return (Array.isArray(fuelings) ? fuelings : [])
       .filter(isValidFueling)
@@ -717,6 +778,10 @@
     stationIdentity: stationIdentity,
     isValidDateString: isValidDateString,
     isValidFueling: isValidFueling,
+    isValidMaintenance: isValidMaintenance,
+    maintenanceTotal: maintenanceTotal,
+    sortedMaintenanceByDateDesc: sortedMaintenanceByDateDesc,
+    calculateMaintenanceStats: calculateMaintenanceStats,
     sortedByOdometer: sortedByOdometer,
     sortedByDateDesc: sortedByDateDesc,
     findPreviousRecord: findPreviousRecord,
