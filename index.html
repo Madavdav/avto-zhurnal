@@ -258,6 +258,11 @@
             Импортировать из файла
           </label>
           <input id="import-file" type="file" accept=".json,application/json" hidden>
+          <button class="secondary-btn" type="button" id="restore-snapshot-btn" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 5v5h5"/></svg>
+            Восстановить последнюю копию
+          </button>
+          <p class="fineprint" id="snapshot-info"></p>
           <p class="fineprint" id="storage-info"></p>
         </article>
 
@@ -279,7 +284,7 @@
         </article>
 
         <footer class="app-footer">
-          АвтоЖурнал · версия 2.0.0<br>
+          АвтоЖурнал · версия 2.1.0<br>
           Данные не покидают ваше устройство.
         </footer>
       </section>

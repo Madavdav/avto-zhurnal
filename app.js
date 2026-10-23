@@ -77,6 +77,8 @@
     el.profileSubmit = $('profile-submit');
     el.exportBtn = $('export-btn');
     el.importFile = $('import-file');
+    el.restoreSnapshotBtn = $('restore-snapshot-btn');
+    el.snapshotInfo = $('snapshot-info');
     el.clearBtn = $('clear-btn');
     el.storageInfo = $('storage-info');
     el.sheet = $('fuel-sheet');
@@ -238,22 +240,35 @@
     }, 3200);
   }
 
-  function persist() {
-    var saved = S.save(state);
-    if (!saved) {
-      showToast(S.lastError || 'Не удалось сохранить данные.', 'error');
-    }
-    return saved;
+  function cloneState(source) {
+    return JSON.parse(JSON.stringify(source));
   }
 
-  function activeProfile() {
-    for (var index = 0; index < state.profiles.length; index += 1) {
-      if (state.profiles[index].id === state.activeProfileId) {
-        return state.profiles[index];
+  function commitState(nextState, failurePrefix) {
+    if (!S.save(nextState)) {
+      var message = S.lastError || 'Не удалось сохранить данные.';
+      if (failurePrefix) {
+        message = failurePrefix + ': ' + message;
+      }
+      showToast(message, 'error');
+      return false;
+    }
+    state = nextState;
+    return true;
+  }
+
+  function activeProfileIn(sourceState) {
+    for (var index = 0; index < sourceState.profiles.length; index += 1) {
+      if (sourceState.profiles[index].id === sourceState.activeProfileId) {
+        return sourceState.profiles[index];
       }
     }
     // Страховка на случай, если профиль удалили не через интерфейс.
-    return state.profiles[0];
+    return sourceState.profiles[0];
+  }
+
+  function activeProfile() {
+    return activeProfileIn(state);
   }
 
   function getFuelings() {
@@ -585,6 +600,33 @@
 
   /* ── Настройки ─────────────────────────────────────────── */
 
+  function snapshotReasonText(reason) {
+    if (reason === 'before-import') {
+      return 'перед импортом';
+    }
+    if (reason === 'before-clear') {
+      return 'перед удалением данных';
+    }
+    return 'страховочная копия';
+  }
+
+  function formatSnapshotDate(iso) {
+    var date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return 'неизвестное время';
+    }
+    try {
+      return new Intl.DateTimeFormat('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+    } catch (error) {
+      return date.toLocaleString('ru-RU');
+    }
+  }
+
   function renderSettings() {
     var profile = activeProfile();
     el.settingsProfileName.value = profile.name;
@@ -601,6 +643,30 @@
         plural(state.profiles.length, 'автомобиль', 'автомобиля', 'автомобилей') +
         ' · ' + formatBytes(info.bytes)
       : 'Локальное хранилище недоступно в этом браузере.';
+
+    if (el.snapshotInfo && el.restoreSnapshotBtn) {
+      var snapshot = null;
+      var snapshotError = false;
+      try {
+        snapshot = S.readSnapshot();
+      } catch (error) {
+        snapshotError = true;
+      }
+
+      if (snapshot) {
+        var snapshotCount = countFuelings(snapshot.state);
+        el.restoreSnapshotBtn.hidden = false;
+        el.snapshotInfo.textContent = 'Последняя копия: ' +
+          formatSnapshotDate(snapshot.createdAt) + ', ' +
+          snapshotReasonText(snapshot.reason) + ' · ' +
+          snapshotCount + ' ' + plural(snapshotCount, 'запись', 'записи', 'записей') + '.';
+      } else {
+        el.restoreSnapshotBtn.hidden = true;
+        el.snapshotInfo.textContent = snapshotError
+          ? 'Страховочную копию не удалось прочитать.'
+          : 'Страховочная копия создаётся автоматически перед импортом или удалением всех данных.';
+      }
+    }
   }
 
   function bindSettings() {
@@ -624,12 +690,15 @@
         return;
       }
 
-      var profile = activeProfile();
-      profile.name = name.slice(0, 40);
-      profile.initialOdometer = value === null ? null : Math.round(value);
-      profile.updatedAt = new Date().toISOString();
+      var next = cloneState(state);
+      var nextProfile = activeProfileIn(next);
+      nextProfile.name = name.slice(0, 40);
+      nextProfile.initialOdometer = value === null ? null : Math.round(value);
+      nextProfile.updatedAt = new Date().toISOString();
 
-      persist();
+      if (!commitState(next, 'Настройки не сохранены')) {
+        return;
+      }
       renderAll();
       showToast('Автомобиль сохранён');
     });
@@ -658,6 +727,7 @@
     });
 
     el.importFile.addEventListener('change', handleImport);
+    el.restoreSnapshotBtn.addEventListener('click', requestRestoreSnapshot);
     el.clearBtn.addEventListener('click', requestClearAll);
   }
 
@@ -689,17 +759,28 @@
           plural(imported.profiles.length, 'автомобиль', 'автомобиля', 'автомобилей') +
           ' и ' + importedCount + ' ' +
           plural(importedCount, 'запись', 'записи', 'записей') +
-          '. Текущие данные (' + countFuelings(state) + ') будут заменены.',
+          '. Текущие данные (' + countFuelings(state) + ') будут заменены. ' +
+          'Перед импортом автоматически создаётся страховочная копия.',
         confirmLabel: 'Импортировать'
       }).then(function (confirmed) {
         if (!confirmed) {
           return;
         }
-        state = imported;
-        persist();
+
+        if (!S.createSnapshot(state, 'before-import')) {
+          showToast('Импорт отменён. ' +
+            (S.lastError || 'Не удалось создать страховочную копию.'), 'error');
+          return;
+        }
+        renderSettings();
+
+        if (!commitState(imported, 'Импорт отменён. Текущие данные не изменены')) {
+          return;
+        }
         renderAll();
         showToast('Импортировано ' + importedCount + ' ' +
-          plural(importedCount, 'запись', 'записи', 'записей'));
+          plural(importedCount, 'запись', 'записи', 'записей') +
+          '. Страховочная копия сохранена.');
       });
     }).catch(function () {
       showToast('Не удалось прочитать файл.', 'error');
@@ -721,16 +802,63 @@
   function requestClearAll() {
     askConfirm({
       title: 'Удалить все данные?',
-      message: 'Все автомобили, заправки и настройки будут удалены с этого устройства. Резервную копию можно будет восстановить только из сохранённого файла.',
+      message: 'Все автомобили, заправки и настройки будут удалены с этого устройства. ' +
+        'Перед удалением автоматически создаётся страховочная копия — её можно будет восстановить.',
       confirmLabel: 'Удалить всё'
     }).then(function (confirmed) {
       if (!confirmed) {
         return;
       }
-      state = S.defaultState();
-      persist();
+
+      if (!S.createSnapshot(state, 'before-clear')) {
+        showToast('Удаление отменено. ' +
+          (S.lastError || 'Не удалось создать страховочную копию.'), 'error');
+        return;
+      }
+      renderSettings();
+
+      if (!commitState(S.defaultState(), 'Удаление отменено. Данные не изменены')) {
+        return;
+      }
       renderAll();
-      showToast('Все данные удалены');
+      showToast('Все данные удалены. Страховочная копия сохранена.');
+    });
+  }
+
+  function requestRestoreSnapshot() {
+    var snapshot;
+    try {
+      snapshot = S.readSnapshot();
+    } catch (error) {
+      showToast(S.lastError || 'Не удалось прочитать страховочную копию.', 'error');
+      return;
+    }
+    if (!snapshot) {
+      showToast('Страховочная копия не найдена.', 'error');
+      return;
+    }
+
+    var count = countFuelings(snapshot.state);
+    askConfirm({
+      title: 'Восстановить страховочную копию?',
+      message: 'Будут восстановлены данные на ' + formatSnapshotDate(snapshot.createdAt) +
+        ' (' + count + ' ' + plural(count, 'запись', 'записи', 'записей') + '). ' +
+        'Текущие данные будут заменены.',
+      confirmLabel: 'Восстановить'
+    }).then(function (confirmed) {
+      if (!confirmed) {
+        return;
+      }
+
+      var restored = S.restoreSnapshot();
+      if (!restored) {
+        showToast('Не удалось восстановить копию. ' +
+          (S.lastError || 'Данные не изменены.'), 'error');
+        return;
+      }
+      state = restored.state;
+      renderAll();
+      showToast('Данные восстановлены из страховочной копии');
     });
   }
 
@@ -1020,15 +1148,31 @@
       updatedAt: new Date().toISOString()
     };
 
-    var fuelings = getFuelings();
-    if (existing) {
-      var index = fuelings.indexOf(existing);
-      fuelings[index] = record;
-    } else {
-      fuelings.push(record);
-    }
+    var next = cloneState(state);
+    var nextProfile = activeProfileIn(next);
+    var nextFuelings = nextProfile.fuelings;
+    var index = -1;
 
-    persist();
+    if (existing) {
+      for (var itemIndex = 0; itemIndex < nextFuelings.length; itemIndex += 1) {
+        if (nextFuelings[itemIndex].id === existing.id) {
+          index = itemIndex;
+          break;
+        }
+      }
+      if (index === -1) {
+        showToast('Заправка не найдена. Обновите список.', 'error');
+        return;
+      }
+      nextFuelings[index] = record;
+    } else {
+      nextFuelings.push(record);
+    }
+    nextProfile.updatedAt = new Date().toISOString();
+
+    if (!commitState(next, existing ? 'Изменения не сохранены' : 'Заправка не сохранена')) {
+      return;
+    }
     renderAll();
     closeForm();
     showScreen('history');
@@ -1079,10 +1223,14 @@
       if (!confirmed) {
         return;
       }
-      var profile = activeProfile();
-      profile.fuelings = profile.fuelings.filter(function (item) { return item.id !== id; });
-      profile.updatedAt = new Date().toISOString();
-      persist();
+      var next = cloneState(state);
+      var nextProfile = activeProfileIn(next);
+      nextProfile.fuelings = nextProfile.fuelings.filter(function (item) { return item.id !== id; });
+      nextProfile.updatedAt = new Date().toISOString();
+
+      if (!commitState(next, 'Заправка не удалена')) {
+        return;
+      }
       renderAll();
       if (fromSheet) {
         closeForm();
@@ -1187,8 +1335,11 @@
     }
 
     if (state.activeProfileId !== id) {
-      state.activeProfileId = id;
-      persist();
+      var next = cloneState(state);
+      next.activeProfileId = id;
+      if (!commitState(next, 'Не удалось переключить автомобиль')) {
+        return;
+      }
       renderAll();
       showToast('Автомобиль: ' + profile.name);
     }
@@ -1221,13 +1372,17 @@
         return;
       }
 
-      state.profiles = state.profiles.filter(function (item) {
+      var next = cloneState(state);
+      next.profiles = next.profiles.filter(function (item) {
         return item.id !== id;
       });
-      if (state.activeProfileId === id) {
-        state.activeProfileId = state.profiles[0].id;
+      if (next.activeProfileId === id) {
+        next.activeProfileId = next.profiles[0].id;
       }
-      persist();
+
+      if (!commitState(next, 'Автомобиль не удалён')) {
+        return;
+      }
       renderAll();
       showToast('Автомобиль удалён');
     });
@@ -1289,9 +1444,13 @@
       }
 
       var profile = S.createProfile(name, odometer === null ? null : Math.round(odometer));
-      state.profiles.push(profile);
-      state.activeProfileId = profile.id;
-      persist();
+      var next = cloneState(state);
+      next.profiles.push(profile);
+      next.activeProfileId = profile.id;
+
+      if (!commitState(next, 'Автомобиль не добавлен')) {
+        return;
+      }
       renderAll();
       closeProfiles();
       showToast('Автомобиль добавлен');
@@ -1361,6 +1520,24 @@
     renderProfiles();
   }
 
+  var lastUpdateCheck = 0;
+  var serviceWorkerRegistration = null;
+  var updatePromptShown = false;
+
+  function checkForServiceWorkerUpdate(force) {
+    if (!serviceWorkerRegistration) {
+      return;
+    }
+    var now = Date.now();
+    if (!force && now - lastUpdateCheck < 5 * 60 * 1000) {
+      return;
+    }
+    lastUpdateCheck = now;
+    serviceWorkerRegistration.update().catch(function () {
+      // Нет сети — попробуем при следующем открытии или возврате в приложение.
+    });
+  }
+
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) {
       return;
@@ -1368,10 +1545,38 @@
     if (location.protocol !== 'http:' && location.protocol !== 'https:') {
       return;
     }
+
+    var hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController) {
+        hadController = true;
+        return;
+      }
+      if (updatePromptShown) {
+        return;
+      }
+      updatePromptShown = true;
+      if (document.hidden) {
+        window.location.reload();
+        return;
+      }
+      showToast('Доступна новая версия. Перезапустите приложение.');
+    });
+
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('./sw.js').catch(function () {
-        // Офлайн-режим не критичен для работы с данными: приложение продолжит работать онлайн.
-      });
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+        .then(function (registration) {
+          serviceWorkerRegistration = registration;
+          checkForServiceWorkerUpdate(true);
+          document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) {
+              checkForServiceWorkerUpdate(false);
+            }
+          });
+        })
+        .catch(function () {
+          // Офлайн-режим не критичен для работы с данными: приложение продолжит работать онлайн.
+        });
     });
   }
 

@@ -14,6 +14,7 @@
   // Ключ намеренно не меняем: так уже сохранённые данные не потеряются.
   var STORAGE_KEY = 'muranoLog.state.v1';
   var BROKEN_KEY = 'muranoLog.broken.v1';
+  var SNAPSHOT_KEY = 'muranoLog.snapshot.v1';
   var APP_ID = 'auto-log';
   var LEGACY_APP_IDS = ['murano-log'];
   var SCHEMA_VERSION = 2;
@@ -32,6 +33,19 @@
 
   function nowIso() {
     return new Date().toISOString();
+  }
+
+  function pad2(number) {
+    return String(number).padStart(2, '0');
+  }
+
+  function todayIso() {
+    var date = new Date();
+    return date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate());
+  }
+
+  function resolveStorage(store) {
+    return store || global.localStorage;
   }
 
   function isFiniteNonNegative(value) {
@@ -74,11 +88,10 @@
     };
   }
 
-  function todayFileStamp() {
+  function fileStamp() {
     var date = new Date();
-    var month = String(date.getMonth() + 1).padStart(2, '0');
-    var day = String(date.getDate()).padStart(2, '0');
-    return date.getFullYear() + '-' + month + '-' + day;
+    return date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate()) +
+      '-' + pad2(date.getHours()) + '-' + pad2(date.getMinutes()) + '-' + pad2(date.getSeconds());
   }
 
   function normalizeStation(raw) {
@@ -104,19 +117,34 @@
     return { stationId: '', station: text };
   }
 
-  function normalizeFueling(raw, index) {
+  function normalizeFueling(raw, index, options, seenFuelingIds) {
     var prefix = 'Запись №' + (index + 1) + ': ';
+    var strict = Boolean(options && options.strict);
     if (!raw || typeof raw !== 'object') {
       throw new Error(prefix + 'ожидался объект.');
     }
     if (!global.MuranoCalc || !global.MuranoCalc.isValidDateString(raw.date)) {
       throw new Error(prefix + 'неверная или пустая дата.');
     }
+    if (strict && raw.date > (options.today || todayIso())) {
+      throw new Error(prefix + 'дата не может быть в будущем.');
+    }
     if (!isFiniteNonNegative(raw.odometer)) {
       throw new Error(prefix + 'пробег должен быть неотрицательным числом.');
     }
+    if (strict && raw.odometer <= 0) {
+      throw new Error(prefix + 'пробег должен быть больше нуля.');
+    }
     if (!isFiniteNonNegative(raw.liters) || raw.liters <= 0) {
       throw new Error(prefix + 'количество литров должно быть больше нуля.');
+    }
+    if (strict && raw.pricePerLiter !== undefined && raw.pricePerLiter !== null &&
+        !isFiniteNonNegative(raw.pricePerLiter)) {
+      throw new Error(prefix + 'цена за литр должна быть неотрицательным числом.');
+    }
+    if (strict && raw.total !== undefined && raw.total !== null &&
+        !isFiniteNonNegative(raw.total)) {
+      throw new Error(prefix + 'общая сумма должна быть неотрицательным числом.');
     }
 
     var price = isFiniteNonNegative(raw.pricePerLiter) ? raw.pricePerLiter : null;
@@ -125,11 +153,20 @@
     if (price === null && total === null) {
       throw new Error(prefix + 'нужна цена за литр или общая сумма.');
     }
+    if (strict && price !== null && price <= 0) {
+      throw new Error(prefix + 'цена за литр должна быть больше нуля.');
+    }
+    if (strict && total !== null && total <= 0) {
+      throw new Error(prefix + 'общая сумма должна быть больше нуля.');
+    }
     if (total === null) {
       total = raw.liters * price;
     }
     if (price === null) {
       price = total / raw.liters;
+    }
+    if (strict && (!Number.isFinite(price) || !Number.isFinite(total))) {
+      throw new Error(prefix + 'не удалось рассчитать стоимость.');
     }
 
     var station = normalizeStation(raw);
@@ -137,9 +174,22 @@
     var lastPriceField = raw.lastPriceField === 'total' || raw.lastPriceField === 'price'
       ? raw.lastPriceField
       : 'price';
+    var id = typeof raw.id === 'string' && raw.id ? raw.id : makeId();
+
+    if (seenFuelingIds) {
+      if (seenFuelingIds[id]) {
+        if (strict) {
+          throw new Error(prefix + 'повторяющийся ID записи.');
+        }
+        do {
+          id = makeId();
+        } while (seenFuelingIds[id]);
+      }
+      seenFuelingIds[id] = true;
+    }
 
     return {
-      id: typeof raw.id === 'string' && raw.id ? raw.id : makeId(),
+      id: id,
       date: raw.date,
       odometer: raw.odometer,
       liters: raw.liters,
@@ -155,7 +205,8 @@
     };
   }
 
-  function normalizeProfile(raw, index, seenIds) {
+  function normalizeProfile(raw, index, seenIds, options, seenFuelingIds) {
+    var strict = Boolean(options && options.strict);
     if (!raw || typeof raw !== 'object') {
       throw new Error('Профиль №' + (index + 1) + ': ожидался объект.');
     }
@@ -164,10 +215,19 @@
     if (!Array.isArray(raw.fuelings)) {
       throw new Error('В профиле «' + name + '» нет списка заправок.');
     }
+    if (strict && raw.initialOdometer !== undefined && raw.initialOdometer !== null &&
+        raw.initialOdometer !== '' && !isFiniteNonNegative(raw.initialOdometer)) {
+      throw new Error('В профиле «' + name + '» начальный пробег должен быть неотрицательным числом.');
+    }
 
     var id = typeof raw.id === 'string' && raw.id ? raw.id : makeId();
     if (seenIds && seenIds[id]) {
-      id = makeId();
+      if (strict) {
+        throw new Error('Профиль «' + name + '»: повторяющийся ID.');
+      }
+      do {
+        id = makeId();
+      } while (seenIds[id]);
     }
     if (seenIds) {
       seenIds[id] = true;
@@ -180,24 +240,27 @@
       id: id,
       name: name,
       initialOdometer: normalizeInitialOdometer(raw.initialOdometer, false),
-      fuelings: raw.fuelings.map(normalizeFueling),
+      fuelings: raw.fuelings.map(function (item, itemIndex) {
+        return normalizeFueling(item, itemIndex, options, seenFuelingIds);
+      }),
       createdAt: createdAt,
       updatedAt: updatedAt
     };
   }
 
-  function normalizeState(raw) {
+  function normalizeState(raw, options) {
     if (!raw || typeof raw !== 'object') {
       throw new Error('Файл не похож на резервную копию АвтоЖурнала.');
     }
 
     var source = raw.data && typeof raw.data === 'object' ? raw.data : raw;
     var profiles = [];
+    var seenFuelingIds = Object.create(null);
 
     if (Array.isArray(source.profiles)) {
       var seenIds = Object.create(null);
       profiles = source.profiles.map(function (profile, index) {
-        return normalizeProfile(profile, index, seenIds);
+        return normalizeProfile(profile, index, seenIds, options, seenFuelingIds);
       });
     } else if (Array.isArray(source.fuelings)) {
       // Старый формат (schemaVersion 1): один автомобиль без профилей.
@@ -209,7 +272,7 @@
           name: DEFAULT_PROFILE_NAME,
           initialOdometer: normalizeInitialOdometer(settings.initialOdometer, true),
           fuelings: source.fuelings
-        }, 0, Object.create(null))
+        }, 0, Object.create(null), options, seenFuelingIds)
       ];
     } else {
       throw new Error('В файле нет списка автомобилей или заправок.');
@@ -236,11 +299,13 @@
     };
   }
 
-  function load() {
+  function load(store) {
     lastError = null;
+    var storage;
     var rawText = null;
     try {
-      rawText = global.localStorage.getItem(STORAGE_KEY);
+      storage = resolveStorage(store);
+      rawText = storage.getItem(STORAGE_KEY);
     } catch (error) {
       lastError = 'Браузер не разрешает доступ к локальному хранилищу.';
       return defaultState();
@@ -258,7 +323,7 @@
       // изменит ли пользователь что-то в текущей сессии.
       if (parsed.schemaVersion !== SCHEMA_VERSION || !Array.isArray(parsed.profiles)) {
         try {
-          global.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+          storage.setItem(STORAGE_KEY, JSON.stringify(normalized));
         } catch (ignored) {
           // Если записать не удалось, нормализованные данные всё равно уже в памяти.
         }
@@ -269,7 +334,7 @@
       // Не выбрасываем повреждённые данные: сохраняем их отдельно,
       // чтобы при необходимости можно было посмотреть вручную.
       try {
-        global.localStorage.setItem(BROKEN_KEY, rawText);
+        storage.setItem(BROKEN_KEY, rawText);
       } catch (ignored) {
         // Если хранилище переполнено или закрыто — просто идём дальше.
       }
@@ -278,15 +343,101 @@
     }
   }
 
-  function save(state) {
+  function save(state, store) {
     lastError = null;
     try {
-      global.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      resolveStorage(store).setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
     } catch (error) {
       lastError = 'Не удалось сохранить данные на устройстве. Возможно, закончилось место или браузер запретил хранение.';
       return false;
     }
+  }
+
+  function createSnapshot(state, reason, store) {
+    lastError = null;
+    var snapshot;
+    try {
+      snapshot = {
+        app: APP_ID,
+        kind: 'snapshot',
+        schemaVersion: SCHEMA_VERSION,
+        createdAt: nowIso(),
+        reason: typeof reason === 'string' ? reason.slice(0, 40) : 'manual',
+        state: normalizeState(state)
+      };
+    } catch (error) {
+      lastError = 'Не удалось подготовить страховочную копию: ' + error.message;
+      return null;
+    }
+
+    var json;
+    try {
+      json = JSON.stringify(snapshot);
+      var storage = resolveStorage(store);
+      storage.setItem(SNAPSHOT_KEY, json);
+      if (storage.getItem(SNAPSHOT_KEY) !== json) {
+        throw new Error('копия не прошла проверку чтением.');
+      }
+    } catch (error) {
+      lastError = 'Не удалось создать страховочную копию. Данные не изменены. ' +
+        'Возможно, на устройстве закончилось место.';
+      return null;
+    }
+
+    return {
+      createdAt: snapshot.createdAt,
+      reason: snapshot.reason,
+      records: snapshot.state.profiles.reduce(function (total, profile) {
+        return total + profile.fuelings.length;
+      }, 0)
+    };
+  }
+
+  function readSnapshot(store) {
+    var rawText;
+    try {
+      rawText = resolveStorage(store).getItem(SNAPSHOT_KEY);
+    } catch (error) {
+      lastError = 'Браузер не разрешает прочитать страховочную копию.';
+      throw new Error(lastError);
+    }
+    if (!rawText) {
+      return null;
+    }
+
+    try {
+      var parsed = JSON.parse(rawText);
+      if (!parsed || parsed.app !== APP_ID || parsed.kind !== 'snapshot' || !parsed.state) {
+        throw new Error('неверный формат копии.');
+      }
+      return {
+        createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : '',
+        reason: typeof parsed.reason === 'string' ? parsed.reason : 'manual',
+        state: normalizeState(parsed.state)
+      };
+    } catch (error) {
+      lastError = 'Страховочная копия повреждена и не может быть восстановлена.';
+      throw new Error(lastError);
+    }
+  }
+
+  function restoreSnapshot(store) {
+    lastError = null;
+    var snapshot;
+    try {
+      snapshot = readSnapshot(store);
+    } catch (error) {
+      return null;
+    }
+    if (!snapshot) {
+      lastError = 'Страховочная копия не найдена.';
+      return null;
+    }
+    if (!save(snapshot.state, store)) {
+      return null;
+    }
+    return snapshot;
   }
 
   function backupObject(state) {
@@ -319,7 +470,7 @@
     if (parsed.schemaVersion !== SCHEMA_VERSION && parsed.schemaVersion !== LEGACY_SCHEMA_VERSION) {
       throw new Error('Файл создан другой версией приложения и пока не поддерживается.');
     }
-    return normalizeState(parsed);
+    return normalizeState(parsed, { strict: true, today: todayIso() });
   }
 
   function downloadBackup(state) {
@@ -327,7 +478,7 @@
     var blob = new Blob([json], { type: 'application/json;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var link = document.createElement('a');
-    var filename = 'avto-zhurnal-' + todayFileStamp() + '.json';
+    var filename = 'avto-zhurnal-' + fileStamp() + '.json';
 
     link.href = url;
     link.download = filename;
@@ -342,10 +493,10 @@
     return filename;
   }
 
-  function storageInfo() {
+  function storageInfo(store) {
     var text = '';
     try {
-      text = global.localStorage.getItem(STORAGE_KEY) || '';
+      text = resolveStorage(store).getItem(STORAGE_KEY) || '';
     } catch (error) {
       return { available: false, bytes: 0 };
     }
@@ -354,6 +505,7 @@
 
   global.MuranoStorage = {
     STORAGE_KEY: STORAGE_KEY,
+    SNAPSHOT_KEY: SNAPSHOT_KEY,
     APP_ID: APP_ID,
     LEGACY_APP_IDS: LEGACY_APP_IDS,
     SCHEMA_VERSION: SCHEMA_VERSION,
@@ -363,6 +515,9 @@
     createProfile: createProfile,
     load: load,
     save: save,
+    createSnapshot: createSnapshot,
+    readSnapshot: readSnapshot,
+    restoreSnapshot: restoreSnapshot,
     parseBackup: parseBackup,
     backupJson: backupJson,
     downloadBackup: downloadBackup,

@@ -72,6 +72,40 @@
     };
   }
 
+  function memoryStore(initialData) {
+    var data = Object.create(null);
+    if (initialData) {
+      Object.keys(initialData).forEach(function (key) {
+        data[key] = initialData[key];
+      });
+    }
+    return {
+      getItem: function (key) {
+        return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+      },
+      setItem: function (key, value) {
+        data[key] = String(value);
+      },
+      removeItem: function (key) {
+        delete data[key];
+      }
+    };
+  }
+
+  function failingStore(base) {
+    return {
+      getItem: function (key) {
+        return base.getItem(key);
+      },
+      setItem: function () {
+        throw new Error('quota');
+      },
+      removeItem: function () {
+        throw new Error('quota');
+      }
+    };
+  }
+
   /* ── Автопересчёт ─────────────────────────────────────── */
 
   test('Пересчёт', 'Литры + цена за литр → сумма', function () {
@@ -625,6 +659,144 @@
     same(restored.profiles[0].fuelings[0].total, 100);
   });
 
+  /* ── Защита данных ────────────────────────────────────── */
+
+  function storedState(odometer, date) {
+    return S.normalizeState({
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [fueling(date || '2026-10-01', odometer || 1100, 40, 120, true)]
+      }]
+    });
+  }
+
+  test('Хранение', 'Ошибка записи не меняет сохранённые данные', function () {
+    var store = memoryStore();
+    var first = storedState(1100);
+    var second = storedState(2200, '2026-10-02');
+
+    same(S.save(first, store), true, 'первая запись');
+    var saved = store.getItem(S.STORAGE_KEY);
+
+    same(S.save(second, failingStore(store)), false, 'ошибка записи');
+    same(store.getItem(S.STORAGE_KEY), saved, 'старые данные остались');
+    ok(S.lastError, 'есть понятное сообщение об ошибке');
+  });
+
+  test('Хранение', 'Страховочная копия создаётся и восстанавливается', function () {
+    var store = memoryStore();
+    var original = storedState(1100);
+    var imported = storedState(2200, '2026-10-02');
+
+    same(S.save(original, store), true);
+    var snapshot = S.createSnapshot(original, 'before-import', store);
+    ok(snapshot, 'копия создана');
+    same(snapshot.reason, 'before-import');
+    same(snapshot.records, 1);
+
+    same(S.save(imported, store), true, 'импорт сохранён');
+    var read = S.readSnapshot(store);
+    ok(read, 'копия читается');
+    same(read.state.profiles[0].fuelings[0].odometer, 1100, 'в копии старые данные');
+
+    var restored = S.restoreSnapshot(store);
+    ok(restored, 'копия восстановлена');
+    same(restored.state.profiles[0].fuelings[0].odometer, 1100);
+    same(JSON.parse(store.getItem(S.STORAGE_KEY)).profiles[0].fuelings[0].odometer, 1100);
+  });
+
+  test('Хранение', 'Если копия не создалась, данные не меняются', function () {
+    var store = memoryStore();
+    var original = storedState(1100);
+    same(S.save(original, store), true);
+    var saved = store.getItem(S.STORAGE_KEY);
+
+    var result = S.createSnapshot(original, 'before-clear', failingStore(store));
+    same(result, null, 'копия не создана');
+    same(store.getItem(S.STORAGE_KEY), saved, 'текущие данные не тронуты');
+    ok(S.lastError, 'есть сообщение об ошибке');
+  });
+
+  test('Хранение', 'Ошибка восстановления не перезаписывает текущие данные', function () {
+    var store = memoryStore();
+    var original = storedState(1100);
+    var current = storedState(2200, '2026-10-02');
+    same(S.save(original, store), true);
+    S.createSnapshot(original, 'before-import', store);
+    same(S.save(current, store), true);
+    var saved = store.getItem(S.STORAGE_KEY);
+
+    same(S.restoreSnapshot(failingStore(store)), null, 'восстановление не удалось');
+    same(store.getItem(S.STORAGE_KEY), saved, 'текущие данные остались');
+    ok(S.lastError, 'есть сообщение об ошибке');
+  });
+
+  test('Импорт', 'Будущая дата отклоняется', function () {
+    throws(function () {
+      S.parseBackup(JSON.stringify({
+        app: 'auto-log',
+        schemaVersion: 2,
+        profiles: [{
+          id: 'p1',
+          name: 'Моя машина',
+          initialOdometer: 1000,
+          fuelings: [fueling('2999-01-01', 1100, 40, 120, true)]
+        }]
+      }));
+    }, 'будущая дата должна быть отклонена');
+  });
+
+  test('Импорт', 'Повторяющиеся ID заправок отклоняются', function () {
+    var first = fueling('2026-10-01', 1100, 40, 120, true);
+    var second = fueling('2026-10-02', 1200, 40, 120, true);
+    second.id = first.id;
+
+    throws(function () {
+      S.parseBackup(JSON.stringify({
+        app: 'auto-log',
+        schemaVersion: 2,
+        profiles: [{
+          id: 'p1',
+          name: 'Моя машина',
+          initialOdometer: 1000,
+          fuelings: [first, second]
+        }]
+      }));
+    }, 'повторяющийся ID должен быть отклонён');
+  });
+
+  test('Импорт', 'Нулевой пробег, цена и сумма отклоняются', function () {
+    function importFueling(change) {
+      var record = fueling('2026-10-01', 1100, 40, 120, true);
+      change(record);
+      return JSON.stringify({
+        app: 'auto-log',
+        schemaVersion: 2,
+        profiles: [{
+          id: 'p1',
+          name: 'Моя машина',
+          initialOdometer: 1000,
+          fuelings: [record]
+        }]
+      });
+    }
+
+    throws(function () {
+      S.parseBackup(importFueling(function (record) { record.odometer = 0; }));
+    }, 'нулевой пробег должен быть отклонён');
+
+    throws(function () {
+      S.parseBackup(importFueling(function (record) {
+        record.pricePerLiter = 0;
+        record.total = 0;
+      }));
+    }, 'нулевая цена должна быть отклонена');
+  });
+
   /* ── Вывод результатов ────────────────────────────────── */
 
   var passed = results.filter(function (item) { return item.ok; }).length;
@@ -637,7 +809,7 @@
       (failed ? '✕ ' + failed + ' провалено' : '✓ Все тесты пройдены') +
     '</span>' +
     '<span>' + passed + ' из ' + results.length + '</span>' +
-    '<span class="note">Расчёты, статистика и резервные копии</span>';
+    '<span class="note">Расчёты, профили, резервные копии и защита данных</span>';
 
   var lastGroup = null;
   var html = '';
