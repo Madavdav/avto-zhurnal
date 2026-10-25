@@ -7,6 +7,7 @@
 
   var C = window.MuranoCalc;
   var S = window.MuranoStorage;
+  var O = window.MuranoOcr;
   var results = [];
   var NBSP = '\u00A0';
 
@@ -1174,6 +1175,272 @@
         }]
       }));
     }, 'повторяющийся ID должен быть отклонён');
+  });
+
+  /* ── Топливо и последняя цена ─────────────────────────── */
+
+  test('Топливо', 'Ровно два типа: солярка и бензин АИ-95', function () {
+    same(C.FUEL_TYPES.length, 2);
+    same(C.FUEL_TYPES[0].name, 'Солярка (дизель)');
+    same(C.FUEL_TYPES[1].name, 'Бензин АИ-95');
+    same(C.normalizeFuelType('diesel'), 'diesel');
+    same(C.normalizeFuelType('petrol95'), 'petrol95');
+    same(C.normalizeFuelType('petrol'), '', 'неизвестный тип не угадывается');
+    same(C.normalizeFuelType(''), '');
+    same(C.fuelTypeName('diesel'), 'Солярка (дизель)');
+    same(C.fuelTypeName('unknown'), '');
+  });
+
+  test('Топливо', 'Последняя цена хранится отдельно для каждого типа', function () {
+    var prices = C.normalizeLastFuelPrices({ diesel: 7.77, petrol95: null, extra: 9.99 });
+    same(prices.diesel, 7.77);
+    same(prices.petrol95, null);
+    same(Object.keys(prices).length, 2, 'лишние ключи не сохраняются');
+    same(C.lastPriceForFuelType(prices, 'diesel'), 7.77);
+    same(C.lastPriceForFuelType(prices, 'petrol95'), null);
+    same(C.lastPriceForFuelType(prices, ''), null);
+  });
+
+  test('Топливо', 'Запоминание цены не смешивает дизель и АИ-95', function () {
+    var initial = C.normalizeLastFuelPrices({ diesel: 7.77 });
+    var withPetrol = C.rememberLastFuelPrice(initial, 'petrol95', 7.95);
+    same(initial.petrol95, null, 'исходный объект не изменён');
+    same(withPetrol.diesel, 7.77);
+    same(withPetrol.petrol95, 7.95);
+    same(C.rememberLastFuelPrice(withPetrol, 'unknown', 8.5).petrol95, 7.95);
+    same(C.rememberLastFuelPrice(withPetrol, 'diesel', 0).diesel, 7.77);
+    same(C.normalizeLastFuelPrices({ diesel: '7,77', petrol95: -1 }).diesel, 7.77);
+  });
+
+  test('Топливо', 'Корпоративная заправка через דלקן не путается с АЗС Delek', function () {
+    ok(C.isCorporateFueling({ corporate: true }), 'явный флаг');
+    ok(C.isCorporateFueling({ note: 'Оплата через דלקן' }), 'текст в заметке');
+    ok(!C.isCorporateFueling({ station: 'Delek' }), 'Delek — обычная АЗС');
+    ok(!C.isCorporateFueling({ station: 'Dor Alon' }), 'другая АЗС');
+    ok(!C.isCorporateFueling({}), 'пустая запись');
+  });
+
+  test('Топливо', 'Старые записи не получают тип топлива наугад', function () {
+    var state = S.normalizeState({
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [fueling('2026-10-01', 1100, 40, 300, true, 'Delek', 'delek')]
+      }]
+    });
+    var record = state.profiles[0].fuelings[0];
+    same(record.fuelType, '');
+    same(record.corporate, false);
+    same(state.profiles[0].lastFuelPrices.diesel, null);
+    same(state.profiles[0].lastFuelPrices.petrol95, null);
+  });
+
+  test('Топливо', 'Тип, флаг и последние цены сохраняются в копии', function () {
+    var record = fueling('2026-10-01', 1100, 40, 310.8, true, 'Paz', 'paz');
+    record.fuelType = 'petrol95';
+    record.corporate = false;
+    var state = S.normalizeState({
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        lastFuelPrices: { diesel: 7.77, petrol95: 7.95 },
+        fuelings: [record]
+      }]
+    });
+
+    var restored = S.parseBackup(S.backupJson(state));
+    var restoredRecord = restored.profiles[0].fuelings[0];
+    same(restoredRecord.fuelType, 'petrol95');
+    same(restoredRecord.corporate, false);
+    same(restored.profiles[0].lastFuelPrices.diesel, 7.77);
+    same(restored.profiles[0].lastFuelPrices.petrol95, 7.95);
+  });
+
+  test('Топливо', 'Неизвестный тип в импорте остаётся пустым', function () {
+    var record = fueling('2026-10-01', 1100, 40, 300, true, 'Sonol', 'sonol');
+    record.fuelType = 'gasoline';
+    record.corporate = 'yes';
+    var state = S.normalizeState({
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [record]
+      }]
+    });
+    same(state.profiles[0].fuelings[0].fuelType, '');
+    same(state.profiles[0].fuelings[0].corporate, true);
+  });
+
+  test('Топливо', 'Старое хранилище мигрирует без потери записей', function () {
+    var oldState = {
+      schemaVersion: 2,
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Моя машина',
+        initialOdometer: 1000,
+        fuelings: [fueling('2026-10-01', 1100, 40, 300, true, 'Paz', 'paz')]
+      }]
+    };
+    var initial = {};
+    initial[S.STORAGE_KEY] = JSON.stringify(oldState);
+    var store = memoryStore(initial);
+
+    var loaded = S.load(store);
+    same(loaded.profiles[0].fuelings.length, 1, 'заправка на месте');
+    same(loaded.profiles[0].fuelings[0].fuelType, '');
+    same(loaded.profiles[0].lastFuelPrices.petrol95, null);
+
+    var saved = JSON.parse(store.getItem(S.STORAGE_KEY));
+    same(saved.profiles[0].fuelings[0].fuelType, '', 'пустой тип записан');
+    same(saved.profiles[0].lastFuelPrices.diesel, null, 'цены записаны');
+  });
+
+  /* ── Новый пробег ─────────────────────────────────────── */
+
+  test('Пробег', 'Пустой пробег новой заправки запрещён', function () {
+    var result = C.validateNewOdometer('', { previousOdometer: 130000 });
+    same(result.ok, false);
+    same(result.code, 'empty');
+    ok(result.message.indexOf('Введите новый пробег') !== -1);
+  });
+
+  test('Пробег', 'Автоматически подставленный пробег не подтверждён', function () {
+    var result = C.validateNewOdometer(130500, {
+      previousOdometer: 130000,
+      prefilled: true
+    });
+    same(result.ok, false);
+    same(result.code, 'prefilled');
+  });
+
+  test('Пробег', 'Совпадение с предыдущей записью запрещено', function () {
+    var result = C.validateNewOdometer(130000, { previousOdometer: 130000 });
+    same(result.ok, false);
+    same(result.code, 'same');
+    ok(result.message.indexOf('забыли') !== -1, 'понятное предупреждение');
+  });
+
+  test('Пробег', 'Новый пробег больше предыдущего принимается', function () {
+    var result = C.validateNewOdometer(130001, { previousOdometer: 130000 });
+    same(result.ok, true);
+    same(result.code, '');
+    same(result.odometer, 130001);
+
+    var first = C.validateNewOdometer(130000, { previousOdometer: null });
+    same(first.ok, true, 'для первой заправки сравнение с прошлой не нужно');
+  });
+
+  /* ── Распознавание данных заправки ─────────────────────── */
+
+  test('Распознавание', 'Английские подписи: литры, цена и сумма', function () {
+    var parsed = O.parseFuelText('TOTAL 335.16\nPRICE PER LITER 7.35\nLITERS 45.60');
+    same(parsed.liters, 45.6, 'литры');
+    same(parsed.pricePerLiter, 7.35, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+    ok(parsed.confidence >= 0.8, 'уверенность должна быть высокой');
+  });
+
+  test('Распознавание', 'Подписи на иврите и западные цифры', function () {
+    var parsed = O.parseFuelText('סה"כ 335.16\nמחיר לליטר 7.35\nליטר 45.60');
+    same(parsed.liters, 45.6, 'литры');
+    same(parsed.pricePerLiter, 7.35, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+  });
+
+  test('Распознавание', 'Числа без подписей связываются по формуле', function () {
+    var parsed = O.parseFuelText('45.60\n7.35\n335.16');
+    same(parsed.liters, 45.6, 'литры');
+    same(parsed.pricePerLiter, 7.35, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+    ok(parsed.confidence < 0.8, 'без подписей уверенность ниже');
+  });
+
+  test('Распознавание', 'Запятая как десятичный разделитель', function () {
+    var parsed = O.parseFuelText('LITERS 45,60\nPRICE/L 7,35\nTOTAL 335,16');
+    same(parsed.liters, 45.6, 'литры');
+    same(parsed.pricePerLiter, 7.35, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+  });
+
+  test('Распознавание', 'Потерянные десятичные точки восстанавливаются', function () {
+    var parsed = O.parseFuelText('LITERS 4560\nPRICE/L 735\nTOTAL 33516');
+    same(parsed.liters, 45.6, 'литры');
+    same(parsed.pricePerLiter, 7.35, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+  });
+
+  test('Распознавание', 'Дата, время и пробег не путаются с суммой', function () {
+    var parsed = O.parseFuelText(
+      '2026-10-23 14:35\nODOMETER 131000\nTOTAL 250.00\nPRICE/L 7.25\nLITERS 34.48'
+    );
+    same(parsed.liters, 34.48, 'литры');
+    same(parsed.pricePerLiter, 7.25, 'цена');
+    same(parsed.total, 250, 'сумма');
+  });
+
+  test('Распознавание', 'Цена восстанавливается по сумме и литрам', function () {
+    var parsed = O.parseFuelText('TOTAL 250.00\nLITERS 34.48');
+    same(parsed.liters, 34.48, 'литры');
+    same(parsed.pricePerLiter, 7.25, 'цена');
+    same(parsed.total, 250, 'сумма');
+  });
+
+  test('Распознавание', 'Литры восстанавливаются по сумме и цене', function () {
+    var parsed = O.parseFuelText('TOTAL 250.00\nPRICE/L 7.25');
+    same(parsed.liters, 34.48, 'литры');
+    same(parsed.pricePerLiter, 7.25, 'цена');
+    same(parsed.total, 250, 'сумма');
+  });
+
+  test('Распознавание', 'Сумма восстанавливается по литрам и цене', function () {
+    var parsed = O.parseFuelText('LITERS 45.60\nPRICE/L 7.35');
+    same(parsed.liters, 45.6, 'литры');
+    same(parsed.pricePerLiter, 7.35, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+  });
+
+  test('Распознавание', 'Одна сумма не превращается в выдуманные числа', function () {
+    var parsed = O.parseFuelText('TOTAL 335.16');
+    same(parsed.liters, null, 'литры');
+    same(parsed.pricePerLiter, null, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+    ok(parsed.warnings.length >= 2, 'должны быть предупреждения');
+  });
+
+  test('Распознавание', 'Мусорный текст даёт пустой результат', function () {
+    var parsed = O.parseFuelText('Thank you for visiting\nHave a nice day');
+    same(parsed.liters, null, 'литры');
+    same(parsed.pricePerLiter, null, 'цена');
+    same(parsed.total, null, 'сумма');
+    same(parsed.confidence, 0, 'уверенность');
+    ok(parsed.warnings.length >= 3, 'должны быть предупреждения');
+  });
+
+  test('Распознавание', 'Арабские цифры нормализуются', function () {
+    var parsed = O.parseFuelText('TOTAL ٣٣٥.١٦\nPRICE/L ٧.٣٥\nLITERS ٤٥.٦٠');
+    same(parsed.liters, 45.6, 'литры');
+    same(parsed.pricePerLiter, 7.35, 'цена');
+    same(parsed.total, 335.16, 'сумма');
+  });
+
+  test('Распознавание', 'Неподдерживаемый файл отклоняется до обработки', function () {
+    throws(function () {
+      O.validateImageFile(new File(['hello'], 'note.txt', { type: 'text/plain' }));
+    }, 'текстовый файл должен быть отклонён');
+
+    throws(function () {
+      O.validateImageFile(new File(['heic'], 'photo.heic', { type: 'image/heic' }));
+    }, 'HEIC должен быть отклонён');
   });
 
   /* ── Вывод результатов ────────────────────────────────── */

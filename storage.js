@@ -67,12 +67,36 @@
     return useLegacyFallback ? DEFAULT_INITIAL_ODOMETER : null;
   }
 
+  function normalizeFuelType(value) {
+    var C = global.MuranoCalc;
+    if (C && typeof C.normalizeFuelType === 'function') {
+      return C.normalizeFuelType(value);
+    }
+    return value === 'diesel' || value === 'petrol95' ? value : '';
+  }
+
+  function normalizeLastFuelPrices(raw) {
+    var C = global.MuranoCalc;
+    if (C && typeof C.normalizeLastFuelPrices === 'function') {
+      return C.normalizeLastFuelPrices(raw);
+    }
+    var source = raw && typeof raw === 'object' ? raw : {};
+    return {
+      diesel: isFiniteNonNegative(source.diesel) && source.diesel > 0 ? source.diesel : null,
+      petrol95: isFiniteNonNegative(source.petrol95) && source.petrol95 > 0 ? source.petrol95 : null
+    };
+  }
+
   function createProfile(name, initialOdometer) {
     var now = nowIso();
     return {
       id: makeId(),
       name: normalizeProfileName(name, 0),
       initialOdometer: normalizeInitialOdometer(initialOdometer, false),
+      lastFuelPrices: {
+        diesel: null,
+        petrol95: null
+      },
       fuelings: [],
       maintenances: [],
       createdAt: now,
@@ -200,6 +224,8 @@
       stationId: station.stationId,
       note: note,
       fullTank: Boolean(raw.fullTank),
+      fuelType: normalizeFuelType(raw.fuelType),
+      corporate: Boolean(raw.corporate),
       lastPriceField: lastPriceField,
       createdAt: typeof raw.createdAt === 'string' && raw.createdAt ? raw.createdAt : nowIso(),
       updatedAt: typeof raw.updatedAt === 'string' && raw.updatedAt ? raw.updatedAt : nowIso()
@@ -305,6 +331,7 @@
       id: id,
       name: name,
       initialOdometer: normalizeInitialOdometer(raw.initialOdometer, false),
+      lastFuelPrices: normalizeLastFuelPrices(raw.lastFuelPrices),
       fuelings: raw.fuelings.map(function (item, itemIndex) {
         return normalizeFueling(item, itemIndex, options, seenFuelingIds);
       }),
@@ -393,7 +420,21 @@
       var needsMigration = parsed.schemaVersion !== SCHEMA_VERSION ||
         !Array.isArray(parsed.profiles) ||
         parsed.profiles.some(function (profile) {
-          return profile && typeof profile === 'object' && !Array.isArray(profile.maintenances);
+          if (!profile || typeof profile !== 'object') {
+            return false;
+          }
+          if (!Array.isArray(profile.maintenances)) {
+            return true;
+          }
+          // Поля топлива появились позже, но схема остаётся совместимой.
+          // Записываем их при загрузке, чтобы старые данные не теряли тип.
+          if (!profile.lastFuelPrices || typeof profile.lastFuelPrices !== 'object') {
+            return true;
+          }
+          return Array.isArray(profile.fuelings) && profile.fuelings.some(function (item) {
+            return item && typeof item === 'object' &&
+              (item.fuelType === undefined || item.corporate === undefined);
+          });
         });
       if (needsMigration) {
         try {

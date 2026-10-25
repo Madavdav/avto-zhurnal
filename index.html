@@ -334,7 +334,7 @@
         </article>
 
         <footer class="app-footer">
-          АвтоЖурнал · версия 2.3.0<br>
+          АвтоЖурнал · версия 2.5.0<br>
           Данные не покидают ваше устройство.
         </footer>
       </section>
@@ -377,6 +377,45 @@
       </header>
 
       <form class="fuel-form" id="fuel-form" novalidate>
+        <section class="ocr-card" id="ocr-card" aria-labelledby="ocr-title">
+          <div class="ocr-head">
+            <div class="ocr-head-text">
+              <p class="eyebrow">Фото</p>
+              <h3 id="ocr-title">Распознать заправку</h3>
+              <p>Сфотографируйте табло колонки или чек — литры, цена и сумма заполнятся после проверки.</p>
+            </div>
+            <span class="chip chip-muted">локально</span>
+          </div>
+
+          <input class="visually-hidden" id="ocr-camera-input" type="file" accept="image/*" capture="environment">
+          <input class="visually-hidden" id="ocr-gallery-input" type="file" accept="image/*">
+
+          <div class="ocr-actions">
+            <button class="secondary-btn" type="button" id="ocr-camera-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.4"/></svg>
+              Снять фото
+            </button>
+            <button class="secondary-btn" type="button" id="ocr-gallery-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-4.5-4.5L7 20"/></svg>
+              Из галереи
+            </button>
+          </div>
+
+          <div class="ocr-preview" id="ocr-preview" hidden>
+            <img id="ocr-preview-image" alt="Фото для распознавания">
+            <div class="ocr-preview-meta">
+              <span id="ocr-file-name">Фото выбрано</span>
+              <button class="ocr-preview-remove" type="button" id="ocr-preview-remove">Убрать</button>
+            </div>
+          </div>
+
+          <div class="ocr-progress" id="ocr-progress" hidden>
+            <span id="ocr-progress-bar"></span>
+          </div>
+          <p class="ocr-status" id="ocr-status" role="status" aria-live="polite">Фото не отправляется в интернет. Сначала покажем распознанные числа для проверки.</p>
+          <p class="ocr-privacy">Обработка идёт на этом устройстве. Ничего не сохраняется без вашего подтверждения.</p>
+        </section>
+
         <div class="form-row">
           <label class="field" for="fuel-date">
             <span class="field-label">Дата</span>
@@ -397,6 +436,18 @@
           <span class="odometer-assist-text" id="odometer-assist-text"></span>
           <button class="odometer-assist-action" type="button" id="odometer-assist-action" hidden>Подставить</button>
         </div>
+
+        <label class="field" for="fuel-type">
+          <span class="field-label">Топливо</span>
+          <span class="input-wrap select-wrap">
+            <select id="fuel-type" required>
+              <option value="">Выберите топливо</option>
+              <option value="diesel">Солярка (дизель)</option>
+              <option value="petrol95">Бензин АИ-95</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </span>
+        </label>
 
         <section class="calc-card" aria-labelledby="calc-title">
           <div class="calc-head">
@@ -475,11 +526,83 @@
           </span>
         </label>
 
+        <label class="switch-row" for="fuel-corporate">
+          <span class="switch-text">
+            <strong>Корпоративная заправка (דלקן)</strong>
+            <small>Цена с такой заправки не запоминается для следующих</small>
+          </span>
+          <span class="switch">
+            <input id="fuel-corporate" type="checkbox">
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+        </label>
+
         <p class="form-error" id="form-error" role="alert"></p>
 
         <button class="primary-btn" type="submit" id="fuel-submit">Сохранить заправку</button>
         <button class="danger-link" type="button" id="fuel-delete" hidden>Удалить эту заправку</button>
       </form>
+    </div>
+  </div>
+
+  <!-- ПРОВЕРКА РАСПОЗНАННЫХ ДАННЫХ -->
+  <div class="modal-backdrop" id="ocr-review-modal" hidden>
+    <div class="modal-card ocr-review-card" role="dialog" aria-modal="true" aria-labelledby="ocr-review-title">
+      <div class="profile-modal-head">
+        <div>
+          <p class="eyebrow">Распознавание</p>
+          <h3 id="ocr-review-title">Проверьте данные</h3>
+        </div>
+        <button class="icon-btn" type="button" id="ocr-review-close" aria-label="Закрыть проверку распознавания">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+
+      <p class="ocr-review-note">Это только предварительный результат. Исправьте числа, если нужно. В форму они попадут после кнопки «Применить», а сохранит заправку только кнопка «Сохранить».</p>
+
+      <div class="ocr-review-photo">
+        <img id="ocr-review-image" alt="Фото, по которому распознавали данные">
+      </div>
+
+      <p class="ocr-review-badge" id="ocr-review-confidence"></p>
+
+      <div class="ocr-review-fields">
+        <label class="field" for="ocr-review-liters">
+          <span class="field-label">Литры</span>
+          <span class="input-wrap">
+            <input id="ocr-review-liters" type="text" inputmode="decimal" autocomplete="off" placeholder="42,5">
+            <span class="input-suffix">л</span>
+          </span>
+        </label>
+        <label class="field" for="ocr-review-price">
+          <span class="field-label">Цена за литр</span>
+          <span class="input-wrap">
+            <input id="ocr-review-price" type="text" inputmode="decimal" autocomplete="off" placeholder="7,25">
+            <span class="input-suffix">₪</span>
+          </span>
+        </label>
+        <label class="field ocr-review-total-field" for="ocr-review-total">
+          <span class="field-label">Общая сумма</span>
+          <span class="input-wrap input-wrap-large">
+            <input id="ocr-review-total" type="text" inputmode="decimal" autocomplete="off" placeholder="290,00">
+            <span class="input-suffix">₪</span>
+          </span>
+        </label>
+      </div>
+
+      <p class="form-error" id="ocr-review-error" role="alert"></p>
+
+      <div class="ocr-review-actions">
+        <button class="ghost-btn" type="button" id="ocr-review-manual">Ввести вручную</button>
+        <button class="primary-btn" type="button" id="ocr-review-apply">Применить</button>
+      </div>
+
+      <p class="ocr-review-hint">Если распознавание ошиблось, закройте окно и заполните форму вручную — ручной ввод всегда доступен.</p>
+
+      <details class="ocr-raw">
+        <summary>Показать распознанный текст</summary>
+        <pre id="ocr-raw-text"></pre>
+      </details>
     </div>
   </div>
 
@@ -619,6 +742,7 @@
   <script src="./calc.js"></script>
   <script src="./storage.js"></script>
   <script src="./charts.js"></script>
+  <script src="./ocr.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'avto-zhurnal-v2.3.0';
+var CACHE_NAME = 'avto-zhurnal-v2.5.0';
 var CACHE_PREFIXES = ['murano-log-', 'avto-zhurnal-'];
 
 var APP_SHELL = [
@@ -21,11 +21,17 @@ var APP_SHELL = [
   './calc.js',
   './storage.js',
   './charts.js',
+  './ocr.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './vendor/tesseract/tesseract.min.js',
+  './vendor/tesseract/worker.min.js',
+  './vendor/tesseract/tesseract-core-simd-lstm.wasm.js',
+  './vendor/tesseract/tesseract-core-lstm.wasm.js',
+  './vendor/tesseract/eng.traineddata.gz'
 ];
 
 function scopePath() {

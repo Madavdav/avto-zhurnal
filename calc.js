@@ -21,6 +21,13 @@
     { id: 'other', name: 'Другое' }
   ]);
 
+  // Ровно два вида топлива. Пустая строка означает «тип не указан»:
+  // так выглядят старые записи, которым нельзя назначать тип наугад.
+  var FUEL_TYPES = Object.freeze([
+    { id: 'diesel', name: 'Солярка (дизель)' },
+    { id: 'petrol95', name: 'Бензин АИ-95' }
+  ]);
+
   var EPSILON = 1e-8;
 
   /**
@@ -188,6 +195,103 @@
       };
     }
     return { id: '', key: 'none', name: 'Без АЗС' };
+  }
+
+  /* ── Топливо и последняя цена ─────────────────────────── */
+
+  function normalizeFuelType(value) {
+    return value === 'diesel' || value === 'petrol95' ? value : '';
+  }
+
+  function fuelTypeName(value) {
+    var id = normalizeFuelType(value);
+    for (var index = 0; index < FUEL_TYPES.length; index += 1) {
+      if (FUEL_TYPES[index].id === id) {
+        return FUEL_TYPES[index].name;
+      }
+    }
+    return '';
+  }
+
+  function lastPriceForFuelType(lastFuelPrices, fuelType) {
+    var id = normalizeFuelType(fuelType);
+    if (!id || !lastFuelPrices || typeof lastFuelPrices !== 'object') {
+      return null;
+    }
+    var price = nonNegative(lastFuelPrices[id]);
+    return price !== null && price > 0 ? price : null;
+  }
+
+  /**
+   * Оставляет только две известные цены. Старые или испорченные значения
+   * не превращаются в догадки: неизвестная цена остаётся пустой.
+   */
+  function normalizeLastFuelPrices(raw) {
+    return {
+      diesel: lastPriceForFuelType(raw, 'diesel'),
+      petrol95: lastPriceForFuelType(raw, 'petrol95')
+    };
+  }
+
+  function rememberLastFuelPrice(lastFuelPrices, fuelType, price) {
+    var next = normalizeLastFuelPrices(lastFuelPrices);
+    var id = normalizeFuelType(fuelType);
+    var value = nonNegative(price);
+    if (id && value !== null && value > 0) {
+      next[id] = value;
+    }
+    return next;
+  }
+
+  /**
+   * Корпоративная заправка через דלקן: её цена с колонки не должна
+   * становиться «последней ценой» для личных заправок. Явный флаг важнее
+   * текста, но текст в заметке или названии АЗС тоже помогает.
+   */
+  function isCorporateFueling(item) {
+    var record = item || {};
+    if (record.corporate === true) {
+      return true;
+    }
+    var text = String(record.station || '') + ' ' + String(record.note || '');
+    return /דלקן|דלקון|dalkan|dalken|corporate|fuel[\s-]*card/i.test(text);
+  }
+
+  /**
+   * Проверка пробега именно для новой заправки. Редактирование старых
+   * записей эту проверку не использует, поэтому исправить ошибку можно.
+   */
+  function validateNewOdometer(value, options) {
+    var source = options || {};
+    var odometer = nonNegative(value);
+    var previous = nonNegative(source.previousOdometer);
+
+    if (odometer === null || odometer <= 0) {
+      return {
+        ok: false,
+        code: 'empty',
+        odometer: null,
+        message: 'Введите новый пробег — без него заправку не сохранить.'
+      };
+    }
+    if (source.prefilled) {
+      return {
+        ok: false,
+        code: 'prefilled',
+        odometer: odometer,
+        message: 'Пробег подставлен из предыдущей заправки автоматически. Введите новое значение.'
+      };
+    }
+    if (previous !== null && Math.round(odometer) === Math.round(previous)) {
+      return {
+        ok: false,
+        code: 'same',
+        odometer: odometer,
+        message: 'Пробег совпадает с предыдущей записью (' + formatNumber(previous, 0) +
+          ' км). Возможно, вы забыли его обновить. Введите новый пробег.'
+      };
+    }
+    return { ok: true, code: '', odometer: odometer, message: '' };
   }
 
   /**
@@ -766,6 +870,7 @@
   global.MuranoCalc = {
     PRICE_FIELD: PRICE_FIELD,
     STATIONS: STATIONS,
+    FUEL_TYPES: FUEL_TYPES,
     parseNumber: parseNumber,
     formatAmount: formatAmount,
     formatNumber: formatNumber,
@@ -776,6 +881,13 @@
     stationName: stationName,
     inferStationId: inferStationId,
     stationIdentity: stationIdentity,
+    normalizeFuelType: normalizeFuelType,
+    fuelTypeName: fuelTypeName,
+    normalizeLastFuelPrices: normalizeLastFuelPrices,
+    rememberLastFuelPrice: rememberLastFuelPrice,
+    lastPriceForFuelType: lastPriceForFuelType,
+    isCorporateFueling: isCorporateFueling,
+    validateNewOdometer: validateNewOdometer,
     isValidDateString: isValidDateString,
     isValidFueling: isValidFueling,
     isValidMaintenance: isValidMaintenance,

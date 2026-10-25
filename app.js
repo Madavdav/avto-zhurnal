@@ -9,6 +9,7 @@
   var C = window.MuranoCalc;
   var S = window.MuranoStorage;
   var Charts = window.MuranoCharts;
+  var Ocr = window.MuranoOcr;
 
   var state = S.load();
   var currentScreen = 'home';
@@ -19,6 +20,15 @@
   var statsPeriod = 'all';
   var homePeriod = 'month';
   var odometerSuggestion = null;
+  var odometerPrefilled = false;
+  var lastSelectedFuelType = '';
+  var fuelPriceTouched = false;
+  var fuelPriceAutoFilled = false;
+  var ocrObjectUrl = null;
+  var ocrReviewResult = null;
+  var ocrRequestToken = 0;
+
+  var OCR_DEFAULT_STATUS = 'Фото не отправляется в интернет. Сначала покажем распознанные числа для проверки.';
 
   var calcState = {
     liters: null,
@@ -99,9 +109,11 @@
     el.odometerAssist = $('odometer-assist');
     el.odometerAssistText = $('odometer-assist-text');
     el.odometerAssistAction = $('odometer-assist-action');
+    el.fuelType = $('fuel-type');
     el.fuelLiters = $('fuel-liters');
     el.fuelPrice = $('fuel-price');
     el.fuelTotal = $('fuel-total');
+    el.fuelCorporate = $('fuel-corporate');
     el.fuelStation = $('fuel-station');
     el.fuelStationOther = $('fuel-station-other');
     el.fuelStationOtherField = $('fuel-station-other-field');
@@ -111,6 +123,29 @@
     el.formError = $('form-error');
     el.fuelSubmit = $('fuel-submit');
     el.fuelDelete = $('fuel-delete');
+    el.ocrCard = $('ocr-card');
+    el.ocrCameraInput = $('ocr-camera-input');
+    el.ocrGalleryInput = $('ocr-gallery-input');
+    el.ocrCameraBtn = $('ocr-camera-btn');
+    el.ocrGalleryBtn = $('ocr-gallery-btn');
+    el.ocrPreview = $('ocr-preview');
+    el.ocrPreviewImage = $('ocr-preview-image');
+    el.ocrFileName = $('ocr-file-name');
+    el.ocrPreviewRemove = $('ocr-preview-remove');
+    el.ocrProgress = $('ocr-progress');
+    el.ocrProgressBar = $('ocr-progress-bar');
+    el.ocrStatus = $('ocr-status');
+    el.ocrReviewModal = $('ocr-review-modal');
+    el.ocrReviewImage = $('ocr-review-image');
+    el.ocrReviewConfidence = $('ocr-review-confidence');
+    el.ocrReviewLiters = $('ocr-review-liters');
+    el.ocrReviewPrice = $('ocr-review-price');
+    el.ocrReviewTotal = $('ocr-review-total');
+    el.ocrReviewError = $('ocr-review-error');
+    el.ocrReviewManual = $('ocr-review-manual');
+    el.ocrReviewApply = $('ocr-review-apply');
+    el.ocrReviewClose = $('ocr-review-close');
+    el.ocrRawText = $('ocr-raw-text');
     el.maintenanceSheet = $('maintenance-sheet');
     el.maintenanceSheetTitle = $('maintenance-sheet-title');
     el.maintenanceSheetClose = $('maintenance-sheet-close');
@@ -143,6 +178,7 @@
     bindNavigation();
     bindAddButtons();
     bindForm();
+    bindOcr();
     bindMaintenanceForm();
     bindSettings();
     bindStatsPeriod();
@@ -592,11 +628,23 @@
       ? '<p class="fuel-note">' + escapeHtml(item.note) + '</p>'
       : '';
 
+    var fuelType = C.normalizeFuelType(item.fuelType);
+    var fuelBadge = fuelType
+      ? '<span class="badge-fuel' + (fuelType === 'diesel' ? ' is-diesel' : '') +
+          '" title="' + escapeHtml(C.fuelTypeName(fuelType)) + '">' +
+          (fuelType === 'diesel' ? 'Дизель' : 'АИ-95') + '</span>'
+      : '';
+    var corporateBadge = item.corporate === true
+      ? '<span class="badge-corporate" title="Корпоративная заправка через דלקן">דלקן</span>'
+      : '';
+
     return (
       '<article class="fuel-card" data-card-id="' + escapeHtml(item.id) + '">' +
         '<div class="fuel-top">' +
           '<span class="fuel-date">' + escapeHtml(formatDate(item.date)) + '</span>' +
+          fuelBadge +
           (item.fullTank ? '<span class="badge-full">до полного</span>' : '') +
+          corporateBadge +
           '<div class="fuel-actions">' +
             '<button class="mini-btn" type="button" data-edit="' + escapeHtml(item.id) + '" aria-label="Изменить заправку">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>' +
@@ -1138,8 +1186,20 @@
     var raw = el.fuelOdometer.value.replace(/\D/g, '');
     var entered = C.parseNumber(raw);
     var previous = previousOdometerForForm();
+    var previousRecord = C.findPreviousRecord(getFuelings(), el.fuelDate.value, editingId);
     var suggestion = C.proposeOdometer(raw, previous);
     odometerSuggestion = suggestion;
+
+    if (!editingId && odometerPrefilled && raw) {
+      el.odometerAssist.hidden = false;
+      el.odometerAssist.classList.add('is-warning');
+      el.odometerAssistText.textContent = previousRecord
+        ? 'Подставлен пробег прошлой заправки (' + C.formatNumber(previousRecord.odometer, 0) +
+          ' км). Замените его новым значением.'
+        : 'Пробег подставлен автоматически. Проверьте и укажите новое значение.';
+      el.odometerAssistAction.hidden = true;
+      return;
+    }
 
     if (suggestion !== null && suggestion !== entered) {
       el.odometerAssist.hidden = false;
@@ -1147,6 +1207,16 @@
       el.odometerAssistText.textContent =
         'Похоже, полный пробег: ' + C.formatNumber(suggestion, 0) + ' км.';
       el.odometerAssistAction.hidden = false;
+      return;
+    }
+
+    if (!editingId && previousRecord && entered !== null &&
+        Math.round(entered) === Math.round(previousRecord.odometer)) {
+      el.odometerAssist.hidden = false;
+      el.odometerAssist.classList.add('is-warning');
+      el.odometerAssistText.textContent =
+        'Пробег совпадает с предыдущей записью. Возможно, вы забыли его обновить.';
+      el.odometerAssistAction.hidden = true;
       return;
     }
 
@@ -1171,9 +1241,45 @@
       return;
     }
     el.fuelOdometer.value = String(odometerSuggestion);
+    odometerPrefilled = false;
     clearFieldError(el.fuelOdometer);
     el.formError.textContent = '';
     updateOdometerAssist();
+  }
+
+  function applyRememberedFuelPrice() {
+    if (!el.fuelType) {
+      return;
+    }
+    var fuelType = C.normalizeFuelType(el.fuelType.value);
+    var price = C.lastPriceForFuelType(activeProfile().lastFuelPrices, fuelType);
+
+    el.fuelPrice.value = price === null ? '' : C.formatAmount(price, 2);
+    calcState.pricePerLiter = price;
+    calcState.lastPriceField = 'price';
+    fuelPriceTouched = false;
+    fuelPriceAutoFilled = price !== null;
+    clearFieldError(el.fuelPrice);
+
+    if (price === null) {
+      updateCalcHint({
+        liters: calcState.liters,
+        pricePerLiter: null,
+        total: calcState.total,
+        derivedField: null
+      });
+      return;
+    }
+
+    var result = C.recalculate(calcState);
+    calcState.liters = result.liters;
+    calcState.pricePerLiter = result.pricePerLiter;
+    calcState.total = result.total;
+    if (result.derivedField === 'total') {
+      el.fuelTotal.value = result.total === null ? '' : C.formatAmount(result.total, 2);
+    }
+    el.formError.textContent = '';
+    updateCalcHint(result);
   }
 
   function openForm(id) {
@@ -1189,6 +1295,8 @@
       }
     }
 
+    resetOcrSession();
+    el.ocrCard.hidden = Boolean(record);
     clearFormErrors();
     el.formError.textContent = '';
 
@@ -1198,6 +1306,9 @@
       el.fuelDelete.hidden = false;
       el.fuelDate.value = record.date;
       el.fuelOdometer.value = C.formatNumber(record.odometer, 0);
+      odometerPrefilled = false;
+      el.fuelType.value = C.normalizeFuelType(record.fuelType);
+      lastSelectedFuelType = C.normalizeFuelType(record.fuelType);
       el.fuelLiters.value = C.formatAmount(record.liters, 2);
       el.fuelPrice.value = C.formatAmount(record.pricePerLiter, 2);
       el.fuelTotal.value = C.formatAmount(record.total, 2);
@@ -1209,6 +1320,9 @@
       toggleStationOther();
       el.fuelNote.value = record.note || '';
       el.fuelFull.checked = Boolean(record.fullTank);
+      el.fuelCorporate.checked = record.corporate === true;
+      fuelPriceTouched = false;
+      fuelPriceAutoFilled = false;
       calcState = {
         liters: record.liters,
         pricePerLiter: record.pricePerLiter,
@@ -1224,6 +1338,9 @@
       el.fuelOdometer.value = stats.currentOdometer !== null
         ? String(Math.round(stats.currentOdometer))
         : '';
+      odometerPrefilled = Boolean(el.fuelOdometer.value);
+      el.fuelType.value = '';
+      lastSelectedFuelType = '';
       el.fuelLiters.value = '';
       el.fuelPrice.value = '';
       el.fuelTotal.value = '';
@@ -1232,6 +1349,9 @@
       toggleStationOther();
       el.fuelNote.value = '';
       el.fuelFull.checked = true;
+      el.fuelCorporate.checked = false;
+      fuelPriceTouched = false;
+      fuelPriceAutoFilled = false;
       calcState = {
         liters: null,
         pricePerLiter: null,
@@ -1260,6 +1380,10 @@
     document.body.classList.remove('sheet-open');
     editingId = null;
     odometerSuggestion = null;
+    odometerPrefilled = false;
+    lastSelectedFuelType = '';
+    fuelPriceTouched = false;
+    fuelPriceAutoFilled = false;
     if (el.odometerAssist) {
       el.odometerAssist.hidden = true;
       el.odometerAssist.classList.remove('is-warning');
@@ -1268,6 +1392,7 @@
     }
     el.formError.textContent = '';
     clearFormErrors();
+    resetOcrSession();
   }
 
   function sanitizeNumericInput(input) {
@@ -1338,6 +1463,8 @@
       } else if (field === 'price') {
         calcState.pricePerLiter = value;
         calcState.lastPriceField = 'price';
+        fuelPriceTouched = true;
+        fuelPriceAutoFilled = false;
       } else {
         calcState.total = value;
         calcState.lastPriceField = 'total';
@@ -1369,6 +1496,31 @@
     bindCalcInput(el.fuelPrice, 'price');
     bindCalcInput(el.fuelTotal, 'total');
 
+    el.fuelType.addEventListener('change', function () {
+      clearFieldError(el.fuelType);
+      el.formError.textContent = '';
+      var previousType = lastSelectedFuelType;
+      lastSelectedFuelType = C.normalizeFuelType(el.fuelType.value);
+      // В старых записях цену не меняем автоматически: пользователь
+      // мог открыть запись только чтобы исправить другую ошибку.
+      if (editingId) {
+        return;
+      }
+      // Если цену уже ввели вручную или подтвердили после фото, первое
+      // переключение типа не должно затирать её старой ценой из памяти.
+      var keepConfirmedPrice = !previousType &&
+        fuelPriceTouched &&
+        calcState.pricePerLiter !== null &&
+        el.fuelPrice.value.trim() !== '';
+      if (!keepConfirmedPrice) {
+        applyRememberedFuelPrice();
+      }
+    });
+
+    el.fuelCorporate.addEventListener('change', function () {
+      el.formError.textContent = '';
+    });
+
     el.fuelStation.addEventListener('change', function () {
       toggleStationOther();
       clearFieldError(el.fuelStation);
@@ -1385,6 +1537,7 @@
       if (cleaned !== el.fuelOdometer.value) {
         el.fuelOdometer.value = cleaned;
       }
+      odometerPrefilled = false;
       clearFieldError(el.fuelOdometer);
       el.formError.textContent = '';
       updateOdometerAssist();
@@ -1407,6 +1560,410 @@
     });
   }
 
+  /* ── Распознавание данных заправки по фото ─────────────── */
+
+  var OCR_STAGES = {
+    preparing: [0, 4],
+    'loading tesseract core': [4, 18],
+    'initializing tesseract': [18, 24],
+    'loading language traineddata': [24, 38],
+    'initializing api': [38, 48],
+    'recognizing text': [48, 100]
+  };
+
+  var OCR_STAGE_LABELS = {
+    preparing: 'Готовим фото…',
+    'loading tesseract core': 'Загружаем локальный движок…',
+    'initializing tesseract': 'Запускаем распознавание…',
+    'loading language traineddata': 'Загружаем языковые данные…',
+    'initializing api': 'Настраиваем распознавание…',
+    'recognizing text': 'Читаем текст на фото…'
+  };
+
+  function bindOcr() {
+    if (!el.ocrCard) {
+      return;
+    }
+
+    if (!Ocr) {
+      setOcrBusy(true);
+      setOcrStatus('Распознавание недоступно. Введите данные вручную.', 'error');
+      return;
+    }
+
+    el.ocrCameraBtn.addEventListener('click', function () {
+      el.ocrCameraInput.click();
+    });
+    el.ocrGalleryBtn.addEventListener('click', function () {
+      el.ocrGalleryInput.click();
+    });
+
+    [el.ocrCameraInput, el.ocrGalleryInput].forEach(function (input) {
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        input.value = '';
+        if (file) {
+          handleOcrFile(file);
+        }
+      });
+    });
+
+    el.ocrPreviewRemove.addEventListener('click', function () {
+      resetOcrPreview();
+      showToast('Фото убрано. Можно выбрать другое или заполнить форму вручную.');
+    });
+
+    el.ocrReviewClose.addEventListener('click', function () {
+      closeOcrReview('scan');
+    });
+    el.ocrReviewManual.addEventListener('click', function () {
+      closeOcrReview('manual');
+    });
+    el.ocrReviewApply.addEventListener('click', applyOcrValues);
+    el.ocrReviewModal.addEventListener('click', function (event) {
+      if (event.target === el.ocrReviewModal) {
+        closeOcrReview('scan');
+      }
+    });
+
+    [el.ocrReviewLiters, el.ocrReviewPrice, el.ocrReviewTotal].forEach(function (input) {
+      input.addEventListener('input', function () {
+        sanitizeNumericInput(input);
+        el.ocrReviewError.textContent = '';
+      });
+    });
+  }
+
+  function setOcrBusy(isBusy) {
+    if (!el.ocrCard) {
+      return;
+    }
+    el.ocrCard.classList.toggle('is-busy', isBusy);
+    el.ocrCard.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    el.ocrCameraBtn.disabled = isBusy;
+    el.ocrGalleryBtn.disabled = isBusy;
+    el.ocrPreviewRemove.disabled = isBusy;
+  }
+
+  function setOcrStatus(message, tone) {
+    if (!el.ocrStatus) {
+      return;
+    }
+    el.ocrStatus.textContent = message;
+    el.ocrStatus.classList.toggle('is-working', tone === 'working');
+    el.ocrStatus.classList.toggle('is-error', tone === 'error');
+  }
+
+  function setOcrProgress(percent) {
+    if (!el.ocrProgress) {
+      return;
+    }
+    if (percent === null || typeof percent === 'undefined') {
+      el.ocrProgress.hidden = true;
+      el.ocrProgressBar.style.width = '0%';
+      return;
+    }
+    var clamped = Math.max(0, Math.min(100, percent));
+    el.ocrProgress.hidden = false;
+    el.ocrProgressBar.style.width = clamped.toFixed(1) + '%';
+  }
+
+  function updateOcrProgress(payload) {
+    var status = payload && payload.status ? payload.status : '';
+    var progress = payload && typeof payload.progress === 'number' ? payload.progress : 0;
+    var stageProgress = Math.max(0, Math.min(1, progress));
+    var range = OCR_STAGES[status];
+    var percent = range
+      ? range[0] + (range[1] - range[0]) * stageProgress
+      : stageProgress * 100;
+
+    setOcrProgress(percent);
+
+    var label = OCR_STAGE_LABELS[status];
+    if (!label) {
+      label = 'Распознаём фото…';
+    }
+    if (status === 'recognizing text') {
+      label += ' ' + Math.round(stageProgress * 100) + '%';
+    }
+    setOcrStatus(label, 'working');
+  }
+
+  function showOcrPhoto(file) {
+    if (ocrObjectUrl) {
+      URL.revokeObjectURL(ocrObjectUrl);
+    }
+    ocrObjectUrl = URL.createObjectURL(file);
+    el.ocrPreviewImage.src = ocrObjectUrl;
+    el.ocrFileName.textContent = file.name || 'Фото';
+    el.ocrPreview.hidden = false;
+  }
+
+  function resetOcrPreview() {
+    ocrRequestToken += 1;
+    if (ocrObjectUrl) {
+      URL.revokeObjectURL(ocrObjectUrl);
+      ocrObjectUrl = null;
+    }
+    el.ocrPreviewImage.removeAttribute('src');
+    el.ocrReviewImage.removeAttribute('src');
+    el.ocrPreview.hidden = true;
+    setOcrBusy(false);
+    setOcrProgress(null);
+    setOcrStatus(OCR_DEFAULT_STATUS, '');
+  }
+
+  function resetOcrSession() {
+    ocrRequestToken += 1;
+    resetOcrPreview();
+    ocrReviewResult = null;
+    if (el.ocrReviewModal) {
+      el.ocrReviewModal.hidden = true;
+    }
+    if (el.ocrReviewError) {
+      el.ocrReviewError.textContent = '';
+    }
+    if (el.ocrCameraInput) {
+      el.ocrCameraInput.value = '';
+    }
+    if (el.ocrGalleryInput) {
+      el.ocrGalleryInput.value = '';
+    }
+    if (el.sheet && el.sheet.classList.contains('is-open') && el.ocrReviewModal) {
+      el.sheet.inert = false;
+    }
+    document.body.classList.remove('modal-open');
+  }
+
+  function handleOcrFile(file) {
+    var token = ocrRequestToken + 1;
+    ocrRequestToken = token;
+
+    showOcrPhoto(file);
+    setOcrBusy(true);
+    setOcrProgress(2);
+    setOcrStatus('Готовим фото…', 'working');
+    el.ocrReviewError.textContent = '';
+
+    try {
+      Ocr.validateImageFile(file);
+    } catch (error) {
+      handleOcrError(error, token);
+      return;
+    }
+
+    Ocr.recognizeImage(file, {
+      onProgress: function (payload) {
+        if (token === ocrRequestToken) {
+          updateOcrProgress(payload);
+        }
+      }
+    }).then(function (result) {
+      if (token !== ocrRequestToken) {
+        return;
+      }
+
+      setOcrBusy(false);
+      setOcrProgress(null);
+
+      var parsed = result.parsed || {};
+      var hasAnyValue = parsed.liters !== null ||
+        parsed.pricePerLiter !== null ||
+        parsed.total !== null;
+
+      if (!hasAnyValue) {
+        setOcrStatus('Не удалось найти числа на фото. Сфотографируйте ближе, ровнее или введите данные вручную.', 'error');
+        showToast('Распознать числа не удалось. Ручной ввод ниже.', 'error');
+        return;
+      }
+
+      setOcrStatus('Числа распознаны. Проверьте их перед переносом в форму.', 'working');
+      openOcrReview(result);
+    }).catch(function (error) {
+      handleOcrError(error, token);
+    });
+  }
+
+  function ocrErrorMessage(error) {
+    var code = error && error.code;
+    if (code === 'too_large') {
+      return 'Фото больше 20 МБ. Выберите файл поменьше.';
+    }
+    if (code === 'not_image') {
+      return 'Это не изображение. Выберите фото чека или табло.';
+    }
+    if (code === 'unsupported_image') {
+      return 'Формат HEIC пока не поддерживается. Сделайте обычное фото в JPEG.';
+    }
+    if (code === 'ocr_unavailable') {
+      return 'Локальный движок распознавания не загрузился. Введите данные вручную.';
+    }
+    if (code === 'image_error' || code === 'canvas_error') {
+      return 'Не удалось открыть фото. Попробуйте другой файл или введите данные вручную.';
+    }
+    return 'Не удалось распознать фото. Введите данные вручную — форма доступна.';
+  }
+
+  function handleOcrError(error, token) {
+    if (token !== ocrRequestToken) {
+      return;
+    }
+    setOcrBusy(false);
+    setOcrProgress(null);
+    setOcrStatus(ocrErrorMessage(error), 'error');
+    showToast('Распознавание не удалось. Можно ввести данные вручную.', 'error');
+  }
+
+  function openOcrReview(result) {
+    var parsed = result.parsed || {};
+    var confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+    var label = 'Низкая уверенность';
+    var tone = 'is-low';
+
+    if (confidence >= 0.75) {
+      label = 'Высокая уверенность';
+      tone = '';
+    } else if (confidence >= 0.5) {
+      label = 'Средняя уверенность';
+      tone = 'is-medium';
+    }
+
+    el.ocrReviewLiters.value = parsed.liters === null ? '' : C.formatAmount(parsed.liters, 2);
+    el.ocrReviewPrice.value = parsed.pricePerLiter === null ? '' : C.formatAmount(parsed.pricePerLiter, 2);
+    el.ocrReviewTotal.value = parsed.total === null ? '' : C.formatAmount(parsed.total, 2);
+    el.ocrReviewConfidence.textContent = label + ' · проверьте числа';
+    el.ocrReviewConfidence.className = 'ocr-review-badge' + (tone ? ' ' + tone : '');
+    el.ocrRawText.textContent = result.text && result.text.trim()
+      ? result.text.trim()
+      : 'Текст не распознан.';
+    el.ocrReviewImage.src = ocrObjectUrl || '';
+    el.ocrReviewImage.hidden = !ocrObjectUrl;
+    el.ocrReviewError.textContent = '';
+    ocrReviewResult = result;
+
+    el.ocrReviewModal.hidden = false;
+    document.body.classList.add('modal-open');
+    el.sheet.inert = true;
+
+    window.setTimeout(function () {
+      if (!el.ocrReviewModal.hidden) {
+        el.ocrReviewLiters.focus();
+        el.ocrReviewLiters.select();
+      }
+    }, 60);
+  }
+
+  function closeOcrReview(focusTarget) {
+    if (!el.ocrReviewModal || el.ocrReviewModal.hidden) {
+      return;
+    }
+
+    if (document.activeElement && el.ocrReviewModal.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    el.ocrReviewModal.hidden = true;
+    el.ocrReviewError.textContent = '';
+    ocrReviewResult = null;
+    if (el.sheet && el.sheet.classList.contains('is-open')) {
+      el.sheet.inert = false;
+    }
+    document.body.classList.remove('modal-open');
+
+    if (focusTarget === 'manual') {
+      el.fuelLiters.focus();
+      showToast('Заполните форму вручную и нажмите «Сохранить заправку».');
+    } else if (focusTarget === 'scan') {
+      el.ocrCameraBtn.focus();
+    }
+  }
+
+  function valuesAreClose(left, right) {
+    if (left === null || right === null) {
+      return false;
+    }
+    return Math.abs(left - right) < 0.005;
+  }
+
+  function applyOcrValues() {
+    var liters = C.parseNumber(el.ocrReviewLiters.value);
+    var price = C.parseNumber(el.ocrReviewPrice.value);
+    var total = C.parseNumber(el.ocrReviewTotal.value);
+
+    if (price !== null && price <= 0) {
+      price = null;
+    }
+    if (total !== null && total <= 0) {
+      total = null;
+    }
+
+    if (liters === null || liters <= 0) {
+      el.ocrReviewError.textContent = 'Укажите количество литров больше нуля.';
+      el.ocrReviewLiters.focus();
+      return;
+    }
+    if (price === null && total === null) {
+      el.ocrReviewError.textContent = 'Нужна цена за литр или общая сумма.';
+      el.ocrReviewPrice.focus();
+      return;
+    }
+
+    var original = ocrReviewResult && ocrReviewResult.parsed ? ocrReviewResult.parsed : null;
+    var anchor = 'total';
+
+    if (total === null) {
+      anchor = 'price';
+    } else if (original && price !== null && total !== null) {
+      var totalChanged = !valuesAreClose(total, original.total);
+      var priceChanged = !valuesAreClose(price, original.pricePerLiter);
+      if (priceChanged && !totalChanged) {
+        anchor = 'price';
+      }
+    }
+
+    var result = C.recalculate({
+      liters: liters,
+      pricePerLiter: price,
+      total: total,
+      lastPriceField: anchor
+    });
+
+    if (
+      result.liters === null ||
+      result.pricePerLiter === null ||
+      result.total === null ||
+      !Number.isFinite(result.pricePerLiter) ||
+      !Number.isFinite(result.total)
+    ) {
+      el.ocrReviewError.textContent = 'Не удалось рассчитать стоимость. Проверьте литры и цену.';
+      return;
+    }
+
+    calcState = {
+      liters: result.liters,
+      pricePerLiter: result.pricePerLiter,
+      total: result.total,
+      lastPriceField: anchor
+    };
+    // Числа прошли экран проверки. Если цена была в распознанных данных,
+    // считаем её подтверждённой пользователем, а не подставленной из памяти.
+    fuelPriceTouched = price !== null;
+    fuelPriceAutoFilled = false;
+
+    el.fuelLiters.value = C.formatAmount(result.liters, 2);
+    el.fuelPrice.value = C.formatAmount(result.pricePerLiter, 2);
+    el.fuelTotal.value = C.formatAmount(result.total, 2);
+    clearFormErrors();
+    el.formError.textContent = '';
+    updateCalcHint(result);
+    closeOcrReview(null);
+    setOcrStatus('Данные перенесены в форму. Проверьте их и нажмите «Сохранить заправку».', '');
+    showToast('Числа перенесены. Проверьте и нажмите «Сохранить заправку».');
+
+    window.setTimeout(function () {
+      el.fuelLiters.focus();
+    }, 50);
+  }
+
   function handleFormSubmit(event) {
     event.preventDefault();
     el.formError.textContent = '';
@@ -1419,10 +1976,12 @@
     if (suggestedOdometer !== null) {
       odometer = suggestedOdometer;
       el.fuelOdometer.value = String(suggestedOdometer);
+      odometerPrefilled = false;
     }
     var liters = calcState.liters;
     var price = calcState.pricePerLiter;
     var total = calcState.total;
+    var fuelType = C.normalizeFuelType(el.fuelType.value);
 
     if (!date || !C.isValidDateString(date)) {
       return formError('Укажите дату заправки.', el.fuelDate);
@@ -1430,8 +1989,23 @@
     if (date > todayIso()) {
       return formError('Дата не может быть в будущем.', el.fuelDate);
     }
-    if (odometer === null || odometer <= 0) {
+
+    var existing = editingId ? findFueling(editingId) : null;
+    if (!editingId) {
+      var previousRecord = C.findPreviousRecord(getFuelings(), date, null);
+      var odometerCheck = C.validateNewOdometer(odometer, {
+        previousOdometer: previousRecord ? previousRecord.odometer : null,
+        prefilled: odometerPrefilled
+      });
+      if (!odometerCheck.ok) {
+        return formError(odometerCheck.message, el.fuelOdometer);
+      }
+    } else if (odometer === null || odometer <= 0) {
       return formError('Введите пробег одометра больше нуля.', el.fuelOdometer);
+    }
+
+    if (!fuelType && (!existing || C.normalizeFuelType(existing.fuelType))) {
+      return formError('Выберите тип топлива: солярку или бензин АИ-95.', el.fuelType);
     }
     if (liters === null || liters <= 0) {
       return formError('Введите количество литров больше нуля.', el.fuelLiters);
@@ -1453,7 +2027,6 @@
       return formError('Не удалось рассчитать стоимость. Проверьте литры и цену.', el.fuelTotal);
     }
 
-    var existing = editingId ? findFueling(editingId) : null;
     var stationId = el.fuelStation.value;
     if (!C.stationName(stationId)) {
       stationId = '';
@@ -1461,6 +2034,13 @@
     var station = stationId === 'other'
       ? (el.fuelStationOther.value.trim().slice(0, 80) || 'Другое')
       : (stationId ? C.stationName(stationId) : '');
+    var note = el.fuelNote.value.trim();
+    // Флажок нужен для цены через דלקן. Если её явно написали в заметке
+    // или названии АЗС, тоже не запоминаем такую цену как личную.
+    var corporate = el.fuelCorporate.checked || C.isCorporateFueling({
+      station: station,
+      note: note
+    });
 
     var record = {
       id: existing ? existing.id : S.makeId(),
@@ -1471,8 +2051,10 @@
       total: result.total,
       station: station,
       stationId: stationId,
-      note: el.fuelNote.value.trim(),
+      note: note,
       fullTank: el.fuelFull.checked,
+      fuelType: fuelType,
+      corporate: corporate,
       lastPriceField: calcState.lastPriceField || 'price',
       createdAt: existing ? existing.createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -1499,6 +2081,16 @@
       nextFuelings.push(record);
     }
     nextProfile.updatedAt = new Date().toISOString();
+
+    // Последнюю цену запоминаем только для своего топлива и только если
+    // человек действительно ввёл/подтвердил её. Цена через דלקן не считается.
+    if (fuelType && !corporate && fuelPriceTouched && result.pricePerLiter > 0) {
+      nextProfile.lastFuelPrices = C.rememberLastFuelPrice(
+        nextProfile.lastFuelPrices,
+        fuelType,
+        result.pricePerLiter
+      );
+    }
 
     if (!commitState(next, existing ? 'Изменения не сохранены' : 'Заправка не сохранена')) {
       return;
@@ -2080,6 +2672,10 @@
       }
       if (!el.confirmModal.hidden) {
         settleConfirm(false);
+        return;
+      }
+      if (el.ocrReviewModal && !el.ocrReviewModal.hidden) {
+        closeOcrReview('scan');
         return;
       }
       if (!el.profilesModal.hidden) {
