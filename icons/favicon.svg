@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="АвтоЖурнал">
+  <defs>
+    <linearGradient id="bg" x1="70" y1="34" x2="448" y2="486" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#132b4e"/>
+      <stop offset="0.54" stop-color="#0b1b31"/>
+      <stop offset="1" stop-color="#07111f"/>
+    </linearGradient>
+    <linearGradient id="route" x1="132" y1="381" x2="382" y2="154" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8bbdff"/>
+      <stop offset="1" stop-color="#2f70e0"/>
+    </linearGradient>
+    <radialGradient id="marker-glow" cx="0.5" cy="0.5" r="0.5">
+      <stop stop-color="#78b1ff" stop-opacity="0.52"/>
+      <stop offset="1" stop-color="#78b1ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect x="2.5" y="2.5" width="507" height="507" rx="113.5" fill="none" stroke="#c6ddff" stroke-opacity="0.09" stroke-width="5"/>
+  <path d="M132 381C170 279 252 211 384 154" fill="none" stroke="url(#route)" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="392" cy="149" r="58" fill="url(#marker-glow)"/>
+  <circle cx="392" cy="149" r="31" fill="#dcebff" opacity="0.22"/>
+  <circle cx="392" cy="149" r="23" fill="#f5f9ff"/>
+</svg>

@@ -6,16 +6,34 @@
   'use strict';
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
-  var COLORS = {
-    accent: '#5eead4',
-    accentSoft: 'rgba(94, 234, 212, 0.18)',
-    grid: 'rgba(255, 255, 255, 0.08)',
-    text: '#8d9bb5',
-    textBright: '#f2f6ff',
-    bar: '#2dd4bf',
-    barMuted: 'rgba(94, 234, 212, 0.35)',
-    surface: '#0d1422'
-  };
+
+  function readColors() {
+    if (!window.getComputedStyle) {
+      return {
+        accent: '#5b9bff',
+        grid: 'rgba(151, 180, 222, 0.16)',
+        text: '#91a4bf',
+        textBright: '#edf4ff',
+        bar: '#4f8df7',
+        barMuted: 'rgba(79, 141, 247, 0.36)',
+        surface: '#0e1b2d'
+      };
+    }
+    var styles = window.getComputedStyle(document.documentElement);
+    function value(name, fallback) {
+      var resolved = styles.getPropertyValue(name).trim();
+      return resolved || fallback;
+    }
+    return {
+      accent: value('--chart-accent', '#5b9bff'),
+      grid: value('--chart-grid', 'rgba(151, 180, 222, 0.16)'),
+      text: value('--chart-text', '#91a4bf'),
+      textBright: value('--chart-text-bright', '#edf4ff'),
+      bar: value('--chart-bar', '#4f8df7'),
+      barMuted: value('--chart-bar-muted', 'rgba(79, 141, 247, 0.36)'),
+      surface: value('--chart-surface', '#0e1b2d')
+    };
+  }
 
   function escapeHtml(value) {
     return String(value)
@@ -67,6 +85,7 @@
     if (!container) {
       return;
     }
+    var COLORS = readColors();
     var points = (Array.isArray(segments) ? segments : []).slice(-12);
     if (!points.length) {
       container.innerHTML = emptyState(
@@ -161,6 +180,7 @@
     if (!container) {
       return;
     }
+    var COLORS = readColors();
     var items = Array.isArray(series) ? series : [];
     var maxValue = items.reduce(function (max, item) {
       return Math.max(max, Number.isFinite(item.total) ? item.total : 0);

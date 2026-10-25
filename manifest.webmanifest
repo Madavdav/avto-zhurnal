@@ -9,9 +9,9 @@
   "scope": "./",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "orientation": "portrait",
-  "background_color": "#070b14",
-  "theme_color": "#070b14",
+  "orientation": "any",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
   "categories": ["auto", "utilities", "productivity"],
   "icons": [
     {

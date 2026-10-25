@@ -32,6 +32,11 @@
   var maintenanceFormOpener = null;
   var ocrReviewOpener = null;
 
+  var THEME_KEY = 'muranoLog.theme.v1';
+  var THEME_COLORS = { light: '#f3f6fb', dark: '#07111f' };
+  var themeMode = readThemeMode();
+  var themeMedia = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+
   var OCR_DEFAULT_STATUS = 'Фото не отправляется в интернет. Сначала покажем распознанные числа для проверки.';
 
   var calcState = {
@@ -47,10 +52,105 @@
     return document.getElementById(id);
   }
 
+  /* ── Тема оформления ───────────────────────────────────── */
+
+  function readThemeMode() {
+    try {
+      var saved = window.localStorage.getItem(THEME_KEY);
+      if (saved === 'light' || saved === 'dark' || saved === 'system') {
+        return saved;
+      }
+    } catch (error) {
+      return 'system';
+    }
+    return 'system';
+  }
+
+  function resolvedTheme() {
+    if (themeMode === 'light' || themeMode === 'dark') {
+      return themeMode;
+    }
+    return themeMedia && themeMedia.matches ? 'light' : 'dark';
+  }
+
+  function applyTheme() {
+    var resolved = resolvedTheme();
+    var root = document.documentElement;
+    root.setAttribute('data-theme', resolved);
+    root.setAttribute('data-theme-mode', themeMode);
+    root.style.colorScheme = resolved;
+
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute('content', THEME_COLORS[resolved]);
+    }
+
+    if (el.themeButtons) {
+      el.themeButtons.forEach(function (button) {
+        var active = button.getAttribute('data-theme-choice') === themeMode;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    if (el.themeCurrent) {
+      el.themeCurrent.textContent = themeMode === 'system'
+        ? 'Системная тема'
+        : (resolved === 'light' ? 'Светлая тема' : 'Тёмная тема');
+    }
+
+    if (el.themeHint) {
+      el.themeHint.textContent = themeMode === 'system'
+        ? 'Сейчас используется ' + (resolved === 'light' ? 'светлая' : 'тёмная') +
+          ' тема телефона. Приложение переключится вместе с системой.'
+        : 'Выбор сохранён на этом устройстве и не попадёт в резервную копию журнала.';
+    }
+
+    if (currentScreen === 'charts') {
+      renderCharts();
+    }
+  }
+
+  function bindTheme() {
+    el.themeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-theme-choice]'));
+    el.themeHint = $('theme-hint');
+    el.themeCurrent = $('theme-current');
+
+    el.themeButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        var next = button.getAttribute('data-theme-choice');
+        if (next !== 'light' && next !== 'dark' && next !== 'system') {
+          return;
+        }
+        themeMode = next;
+        try {
+          window.localStorage.setItem(THEME_KEY, themeMode);
+        } catch (error) {
+          // Настройка темы не должна блокировать работу приложения.
+        }
+        applyTheme();
+      });
+    });
+
+    if (themeMedia) {
+      var onSystemThemeChange = function () {
+        if (themeMode === 'system') {
+          applyTheme();
+        }
+      };
+      if (typeof themeMedia.addEventListener === 'function') {
+        themeMedia.addEventListener('change', onSystemThemeChange);
+      } else if (typeof themeMedia.addListener === 'function') {
+        themeMedia.addListener(onSystemThemeChange);
+      }
+    }
+  }
+
   function init() {
     el.app = document.querySelector('.app');
     el.screens = Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));
     el.navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item[data-nav]'));
+    el.iconNavItems = Array.prototype.slice.call(document.querySelectorAll('.icon-btn[data-nav]'));
     el.statOdometer = $('stat-odometer');
     el.heroDate = $('hero-date');
     el.heroHint = $('hero-hint');
@@ -191,6 +291,7 @@
     bindConfirm();
     bindDelegatedActions();
     bindKeyboard();
+    bindTheme();
 
     if (el.statsPeriod) {
       el.statsPeriod.value = statsPeriod;
@@ -199,6 +300,7 @@
       el.sheet.inert = true;
     }
 
+    applyTheme();
     renderAll();
     registerServiceWorker();
 
@@ -439,8 +541,14 @@
     el.screens.forEach(function (screen) {
       screen.classList.toggle('is-active', screen.getAttribute('data-screen') === name);
     });
-    el.navItems.forEach(function (item) {
-      item.classList.toggle('is-active', item.getAttribute('data-nav') === name);
+    el.navItems.concat(el.iconNavItems || []).forEach(function (item) {
+      var isActive = item.getAttribute('data-nav') === name;
+      item.classList.toggle('is-active', isActive);
+      if (isActive) {
+        item.setAttribute('aria-current', 'page');
+      } else {
+        item.removeAttribute('aria-current');
+      }
     });
     window.scrollTo({ top: 0, behavior: 'auto' });
     if (name === 'charts') {
@@ -624,11 +732,11 @@
 
   function fuelCardHtml(item) {
     var station = item.station
-      ? '<span class="fuel-station">' + escapeHtml(item.station) + '</span>'
+      ? '<span class="fuel-station" dir="auto">' + escapeHtml(item.station) + '</span>'
       : '<span class="fuel-station is-empty">Без названия АЗС</span>';
 
     var note = item.note
-      ? '<p class="fuel-note">' + escapeHtml(item.note) + '</p>'
+      ? '<p class="fuel-note log-note" dir="auto">' + escapeHtml(item.note) + '</p>'
       : '';
 
     var fuelType = C.normalizeFuelType(item.fuelType);
@@ -642,12 +750,16 @@
       : '';
 
     return (
-      '<article class="fuel-card" data-card-id="' + escapeHtml(item.id) + '">' +
-        '<div class="fuel-top">' +
-          '<span class="fuel-date">' + escapeHtml(formatDate(item.date)) + '</span>' +
-          fuelBadge +
-          (item.fullTank ? '<span class="badge-full">до полного</span>' : '') +
-          corporateBadge +
+      '<article class="fuel-card log-card" data-card-id="' + escapeHtml(item.id) + '">' +
+        '<div class="log-top">' +
+          '<time class="log-date" datetime="' + escapeHtml(item.date) + '" title="' + escapeHtml(formatDate(item.date)) + '">' +
+            escapeHtml(formatDate(item.date, true)) +
+          '</time>' +
+          '<div class="log-badges">' +
+            fuelBadge +
+            (item.fullTank ? '<span class="badge-full">до полного</span>' : '') +
+            corporateBadge +
+          '</div>' +
           '<div class="fuel-actions">' +
             '<button class="mini-btn" type="button" data-edit="' + escapeHtml(item.id) + '" aria-label="Изменить заправку">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>' +
@@ -657,14 +769,20 @@
             '</button>' +
           '</div>' +
         '</div>' +
-        '<div class="fuel-line">' +
-          station +
-          '<strong class="fuel-total">' + escapeHtml(C.formatMoney(item.total)) + '</strong>' +
-        '</div>' +
-        '<div class="fuel-meta">' +
-          '<span>' + escapeHtml(C.formatNumber(item.liters, 2)) + ' л</span>' +
-          '<span>' + escapeHtml(C.formatMoney(item.pricePerLiter)) + '/л</span>' +
-          '<span>' + escapeHtml(C.formatNumber(item.odometer, 0)) + ' км</span>' +
+        '<div class="log-body">' +
+          '<div class="log-station-block">' +
+            station +
+            '<div class="fuel-meta">' +
+              '<span>' + escapeHtml(C.formatMoney(item.pricePerLiter)) + '/л</span>' +
+              '<span>' + escapeHtml(C.formatNumber(item.odometer, 0)) + ' км</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="log-amounts">' +
+            '<span class="log-litres" aria-label="' + escapeHtml(C.formatNumber(item.liters, 2)) + ' литров">' +
+              '<strong>' + escapeHtml(C.formatNumber(item.liters, 2)) + '</strong><span>л</span>' +
+            '</span>' +
+            '<strong class="fuel-total">' + escapeHtml(C.formatMoney(item.total)) + '</strong>' +
+          '</div>' +
         '</div>' +
         note +
       '</article>'
@@ -760,9 +878,12 @@
       }
       meta.push(C.formatNumber(item.odometer, 0) + ' км');
 
-      return '<article class="fuel-card service-card">' +
-        '<div class="fuel-top">' +
-          '<span class="fuel-date">' + escapeHtml(formatDate(item.date)) + '</span>' +
+      return '<article class="fuel-card log-card service-card" data-card-id="' + escapeHtml(item.id) + '">' +
+        '<div class="log-top">' +
+          '<time class="log-date" datetime="' + escapeHtml(item.date) + '" title="' + escapeHtml(formatDate(item.date)) + '">' +
+            escapeHtml(formatDate(item.date, true)) +
+          '</time>' +
+          '<div class="log-badges"><span class="badge-service">Сервис</span></div>' +
           '<div class="fuel-actions">' +
             '<button class="mini-btn" type="button" data-maintenance-edit="' + escapeHtml(item.id) + '" aria-label="Изменить запись обслуживания">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
@@ -772,14 +893,18 @@
             '</button>' +
           '</div>' +
         '</div>' +
-        '<div class="fuel-line">' +
-          '<span class="fuel-station">' + escapeHtml(item.title) + '</span>' +
-          '<span class="fuel-total">' + C.formatMoney(total) + '</span>' +
+        '<div class="log-body">' +
+          '<div class="log-station-block">' +
+            '<span class="fuel-station" dir="auto">' + escapeHtml(item.title) + '</span>' +
+            '<div class="fuel-meta">' +
+              meta.map(function (part) { return '<span>' + escapeHtml(part) + '</span>'; }).join('') +
+            '</div>' +
+          '</div>' +
+          '<div class="log-amounts">' +
+            '<strong class="fuel-total">' + C.formatMoney(total) + '</strong>' +
+          '</div>' +
         '</div>' +
-        '<div class="fuel-meta">' +
-          meta.map(function (part) { return '<span>' + escapeHtml(part) + '</span>'; }).join('') +
-        '</div>' +
-        (item.note ? '<p class="fuel-note">' + escapeHtml(item.note).replace(/\n/g, '<br>') + '</p>' : '') +
+        (item.note ? '<p class="fuel-note log-note" dir="auto">' + escapeHtml(item.note).replace(/\n/g, '<br>') + '</p>' : '') +
       '</article>';
     }).join('');
   }
