@@ -10,7 +10,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'avto-zhurnal-v2.5.0';
+var CACHE_NAME = 'avto-zhurnal-v2.5.1';
 var CACHE_PREFIXES = ['murano-log-', 'avto-zhurnal-'];
 
 var APP_SHELL = [
@@ -22,6 +22,7 @@ var APP_SHELL = [
   './storage.js',
   './charts.js',
   './ocr.js',
+  './focus.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

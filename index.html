@@ -334,7 +334,7 @@
         </article>
 
         <footer class="app-footer">
-          АвтоЖурнал · версия 2.5.0<br>
+          АвтоЖурнал · версия 2.5.1<br>
           Данные не покидают ваше устройство.
         </footer>
       </section>
@@ -387,8 +387,8 @@
             <span class="chip chip-muted">локально</span>
           </div>
 
-          <input class="visually-hidden" id="ocr-camera-input" type="file" accept="image/*" capture="environment">
-          <input class="visually-hidden" id="ocr-gallery-input" type="file" accept="image/*">
+          <input class="visually-hidden" id="ocr-camera-input" type="file" accept="image/*" capture="environment" tabindex="-1">
+          <input class="visually-hidden" id="ocr-gallery-input" type="file" accept="image/*" tabindex="-1">
 
           <div class="ocr-actions">
             <button class="secondary-btn" type="button" id="ocr-camera-btn">
@@ -547,7 +547,7 @@
 
   <!-- ПРОВЕРКА РАСПОЗНАННЫХ ДАННЫХ -->
   <div class="modal-backdrop" id="ocr-review-modal" hidden>
-    <div class="modal-card ocr-review-card" role="dialog" aria-modal="true" aria-labelledby="ocr-review-title">
+    <div class="modal-card ocr-review-card" role="dialog" aria-modal="true" aria-labelledby="ocr-review-title" aria-describedby="ocr-review-note">
       <div class="profile-modal-head">
         <div>
           <p class="eyebrow">Распознавание</p>
@@ -558,7 +558,7 @@
         </button>
       </div>
 
-      <p class="ocr-review-note">Это только предварительный результат. Исправьте числа, если нужно. В форму они попадут после кнопки «Применить», а сохранит заправку только кнопка «Сохранить».</p>
+      <p class="ocr-review-note" id="ocr-review-note">Это только предварительный результат. Исправьте числа, если нужно. В форму они попадут после кнопки «Применить», а сохранит заправку только кнопка «Сохранить».</p>
 
       <div class="ocr-review-photo">
         <img id="ocr-review-image" alt="Фото, по которому распознавали данные">
@@ -608,7 +608,7 @@
 
   <!-- АВТОМОБИЛИ -->
   <div class="modal-backdrop" id="profiles-modal" hidden>
-    <div class="modal-card profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profiles-title">
+    <div class="modal-card profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profiles-title" aria-describedby="profiles-note">
       <div class="profile-modal-head">
         <div>
           <p class="eyebrow">Профили</p>
@@ -619,7 +619,7 @@
         </button>
       </div>
 
-      <p class="profile-modal-note">Выберите машину — у каждой свой журнал, расход и статистика.</p>
+      <p class="profile-modal-note" id="profiles-note">Выберите машину — у каждой свой журнал, расход и статистика.</p>
       <div class="profile-list" id="profiles-list"></div>
       <button class="secondary-btn" type="button" id="profile-add-btn">+ Добавить автомобиль</button>
 
@@ -649,7 +649,7 @@
 
   <!-- ПОДТВЕРЖДЕНИЕ -->
   <div class="modal-backdrop" id="confirm-modal" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text">
       <h3 id="confirm-title">Удалить запись?</h3>
       <p id="confirm-text">Это действие нельзя отменить.</p>
       <div class="modal-actions">
@@ -743,6 +743,7 @@
   <script src="./storage.js"></script>
   <script src="./charts.js"></script>
   <script src="./ocr.js"></script>
+  <script src="./focus.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

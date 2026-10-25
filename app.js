@@ -10,6 +10,7 @@
   var S = window.MuranoStorage;
   var Charts = window.MuranoCharts;
   var Ocr = window.MuranoOcr;
+  var Focus = window.MuranoFocus;
 
   var state = S.load();
   var currentScreen = 'home';
@@ -27,6 +28,9 @@
   var ocrObjectUrl = null;
   var ocrReviewResult = null;
   var ocrRequestToken = 0;
+  var fuelFormOpener = null;
+  var maintenanceFormOpener = null;
+  var ocrReviewOpener = null;
 
   var OCR_DEFAULT_STATUS = 'Фото не отправляется в интернет. Сначала покажем распознанные числа для проверки.';
 
@@ -44,6 +48,7 @@
   }
 
   function init() {
+    el.app = document.querySelector('.app');
     el.screens = Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));
     el.navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item[data-nav]'));
     el.statOdometer = $('stat-odometer');
@@ -176,7 +181,6 @@
     }
 
     bindNavigation();
-    bindAddButtons();
     bindForm();
     bindOcr();
     bindMaintenanceForm();
@@ -465,24 +469,23 @@
     });
   }
 
-  function bindAddButtons() {
-    document.querySelectorAll('[data-action="add"]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        openForm();
-      });
-    });
-  }
-
   function bindDelegatedActions() {
     document.addEventListener('click', function (event) {
+      // Кнопки в пустых состояниях перерисовываются, поэтому обрабатываем
+      // добавление заправки через делегирование, а не прямыми обработчиками.
+      var addFuelButton = event.target.closest('[data-action="add"]');
+      if (addFuelButton) {
+        openForm(null, addFuelButton);
+        return;
+      }
       var addMaintenanceButton = event.target.closest('[data-action="add-maintenance"]');
       if (addMaintenanceButton) {
-        openMaintenanceForm();
+        openMaintenanceForm(null, addMaintenanceButton);
         return;
       }
       var maintenanceEditButton = event.target.closest('button[data-maintenance-edit]');
       if (maintenanceEditButton) {
-        openMaintenanceForm(maintenanceEditButton.getAttribute('data-maintenance-edit'));
+        openMaintenanceForm(maintenanceEditButton.getAttribute('data-maintenance-edit'), maintenanceEditButton);
         return;
       }
       var maintenanceDeleteButton = event.target.closest('button[data-maintenance-delete]');
@@ -492,7 +495,7 @@
       }
       var editButton = event.target.closest('button[data-edit]');
       if (editButton) {
-        openForm(editButton.getAttribute('data-edit'));
+        openForm(editButton.getAttribute('data-edit'), editButton);
         return;
       }
       var deleteButton = event.target.closest('button[data-delete]');
@@ -1068,7 +1071,10 @@
           plural(importedCount, 'запись', 'записи', 'записей') +
           '. Текущие данные (' + countAllRecords(state) + ') будут заменены. ' +
           'Перед импортом автоматически создаётся страховочная копия.',
-        confirmLabel: 'Импортировать'
+        confirmLabel: 'Импортировать',
+        focusFallback: function () {
+          return el.exportBtn;
+        }
       }).then(function (confirmed) {
         if (!confirmed) {
           return;
@@ -1282,7 +1288,7 @@
     updateCalcHint(result);
   }
 
-  function openForm(id) {
+  function openForm(id, opener) {
     var record = null;
     editingId = id || null;
 
@@ -1364,20 +1370,69 @@
     updateOdometerAssist();
     el.form.scrollTop = 0;
     document.querySelector('.fuel-form').scrollTop = 0;
-    el.sheet.inert = false;
+    fuelFormOpener = opener || (
+      document.activeElement &&
+      document.activeElement !== document.body
+        ? document.activeElement
+        : null
+    );
     el.sheet.classList.add('is-open');
     el.sheet.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('sheet-open');
+
+    if (Focus && Focus.openDialog) {
+      var formOpener = fuelFormOpener;
+      Focus.openDialog(el.sheet, {
+        opener: formOpener,
+        initialFocus: el.sheetClose,
+        fallback: function () {
+          return fuelFormFallbackTarget(formOpener);
+        }
+      });
+    } else {
+      el.sheet.inert = false;
+      document.body.classList.add('sheet-open');
+      if (el.app) {
+        el.app.inert = true;
+      }
+      el.sheetClose.focus();
+    }
+  }
+
+  function findVisibleControl(attribute, value) {
+    var nodes = document.querySelectorAll('[' + attribute + ']');
+    for (var index = 0; index < nodes.length; index += 1) {
+      if (
+        nodes[index].getAttribute(attribute) === value &&
+        Focus && Focus.isFocusable(nodes[index])
+      ) {
+        return nodes[index];
+      }
+    }
+    return null;
+  }
+
+  function findFirstVisible(selector, root) {
+    var scope = root || document;
+    var nodes = scope.querySelectorAll(selector);
+    for (var index = 0; index < nodes.length; index += 1) {
+      if (Focus && Focus.isFocusable(nodes[index])) {
+        return nodes[index];
+      }
+    }
+    return null;
+  }
+
+  function fuelFormFallbackTarget(opener) {
+    var editId = opener && opener.getAttribute
+      ? opener.getAttribute('data-edit')
+      : null;
+    var replacement = editId ? findVisibleControl('data-edit', editId) : null;
+    return replacement || findVisibleControl('data-action', 'add');
   }
 
   function closeForm() {
-    if (document.activeElement && el.sheet.contains(document.activeElement)) {
-      document.activeElement.blur();
-    }
-    el.sheet.classList.remove('is-open');
-    el.sheet.inert = true;
-    el.sheet.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('sheet-open');
+    var opener = fuelFormOpener;
+    fuelFormOpener = null;
     editingId = null;
     odometerSuggestion = null;
     odometerPrefilled = false;
@@ -1393,6 +1448,21 @@
     el.formError.textContent = '';
     clearFormErrors();
     resetOcrSession();
+
+    if (Focus && Focus.closeDialog) {
+      Focus.closeDialog(el.sheet);
+    } else {
+      if (el.app) {
+        el.app.inert = false;
+      }
+      document.body.classList.remove('sheet-open');
+      if (opener && typeof opener.focus === 'function') {
+        opener.focus();
+      }
+    }
+    el.sheet.classList.remove('is-open');
+    el.sheet.setAttribute('aria-hidden', 'true');
+    el.sheet.inert = true;
   }
 
   function sanitizeNumericInput(input) {
@@ -1592,9 +1662,11 @@
     }
 
     el.ocrCameraBtn.addEventListener('click', function () {
+      ocrReviewOpener = el.ocrCameraBtn;
       el.ocrCameraInput.click();
     });
     el.ocrGalleryBtn.addEventListener('click', function () {
+      ocrReviewOpener = el.ocrGalleryBtn;
       el.ocrGalleryInput.click();
     });
 
@@ -1717,7 +1789,11 @@
     ocrRequestToken += 1;
     resetOcrPreview();
     ocrReviewResult = null;
+    ocrReviewOpener = null;
     if (el.ocrReviewModal) {
+      if (Focus && Focus.closeDialog) {
+        Focus.closeDialog(el.ocrReviewModal, { restore: false });
+      }
       el.ocrReviewModal.hidden = true;
     }
     if (el.ocrReviewError) {
@@ -1729,10 +1805,6 @@
     if (el.ocrGalleryInput) {
       el.ocrGalleryInput.value = '';
     }
-    if (el.sheet && el.sheet.classList.contains('is-open') && el.ocrReviewModal) {
-      el.sheet.inert = false;
-    }
-    document.body.classList.remove('modal-open');
   }
 
   function handleOcrFile(file) {
@@ -1842,15 +1914,23 @@
     ocrReviewResult = result;
 
     el.ocrReviewModal.hidden = false;
-    document.body.classList.add('modal-open');
-    el.sheet.inert = true;
 
-    window.setTimeout(function () {
-      if (!el.ocrReviewModal.hidden) {
-        el.ocrReviewLiters.focus();
-        el.ocrReviewLiters.select();
-      }
-    }, 60);
+    if (Focus && Focus.openDialog) {
+      var opener = ocrReviewOpener;
+      Focus.openDialog(el.ocrReviewModal, {
+        opener: opener,
+        initialFocus: el.ocrReviewLiters,
+        fallback: function () {
+          return opener || el.ocrCameraBtn;
+        }
+      });
+      el.ocrReviewLiters.select();
+    } else {
+      el.sheet.inert = true;
+      document.body.classList.add('modal-open');
+      el.ocrReviewLiters.focus();
+      el.ocrReviewLiters.select();
+    }
   }
 
   function closeOcrReview(focusTarget) {
@@ -1861,19 +1941,32 @@
     if (document.activeElement && el.ocrReviewModal.contains(document.activeElement)) {
       document.activeElement.blur();
     }
-    el.ocrReviewModal.hidden = true;
     el.ocrReviewError.textContent = '';
     ocrReviewResult = null;
-    if (el.sheet && el.sheet.classList.contains('is-open')) {
-      el.sheet.inert = false;
+
+    var opener = ocrReviewOpener;
+    ocrReviewOpener = null;
+    if (Focus && Focus.closeDialog) {
+      Focus.closeDialog(el.ocrReviewModal, { restore: false });
+    } else {
+      if (el.sheet && el.sheet.classList.contains('is-open')) {
+        el.sheet.inert = false;
+      }
+      document.body.classList.remove('modal-open');
     }
-    document.body.classList.remove('modal-open');
+    el.ocrReviewModal.hidden = true;
 
     if (focusTarget === 'manual') {
       el.fuelLiters.focus();
       showToast('Заполните форму вручную и нажмите «Сохранить заправку».');
     } else if (focusTarget === 'scan') {
-      el.ocrCameraBtn.focus();
+      if (Focus && Focus.restoreFocus) {
+        Focus.restoreFocus(opener, function () {
+          return el.ocrCameraBtn;
+        });
+      } else {
+        el.ocrCameraBtn.focus();
+      }
     }
   }
 
@@ -2096,8 +2189,8 @@
       return;
     }
     renderAll();
-    closeForm();
     showScreen('history');
+    closeForm();
     showToast(existing ? 'Заправка изменена' : 'Заправка сохранена');
   }
 
@@ -2141,9 +2234,26 @@
     return null;
   }
 
-  function openMaintenanceForm(id) {
+  function maintenanceFormFallbackTarget(opener) {
+    var editId = opener && opener.getAttribute
+      ? opener.getAttribute('data-maintenance-edit')
+      : null;
+    var replacement = editId
+      ? findVisibleControl('data-maintenance-edit', editId)
+      : null;
+    return replacement || findVisibleControl('data-action', 'add-maintenance');
+  }
+
+  function openMaintenanceForm(id, opener) {
     var record = null;
     editingMaintenanceId = id || null;
+    maintenanceFormOpener = opener || (
+      document.activeElement &&
+      document.activeElement !== document.body &&
+      !el.maintenanceSheet.contains(document.activeElement)
+        ? document.activeElement
+        : null
+    );
 
     if (editingMaintenanceId) {
       record = findMaintenance(editingMaintenanceId);
@@ -2182,22 +2292,48 @@
     if (el.maintenanceSheet.querySelector('.fuel-form')) {
       el.maintenanceSheet.querySelector('.fuel-form').scrollTop = 0;
     }
-    el.maintenanceSheet.inert = false;
     el.maintenanceSheet.classList.add('is-open');
     el.maintenanceSheet.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('sheet-open');
+
+    if (Focus && Focus.openDialog) {
+      var sheetOpener = maintenanceFormOpener;
+      Focus.openDialog(el.maintenanceSheet, {
+        opener: sheetOpener,
+        initialFocus: el.maintenanceSheetClose,
+        fallback: function () {
+          return maintenanceFormFallbackTarget(sheetOpener);
+        }
+      });
+    } else {
+      el.maintenanceSheet.inert = false;
+      document.body.classList.add('sheet-open');
+      if (el.app) {
+        el.app.inert = true;
+      }
+      el.maintenanceSheetClose.focus();
+    }
   }
 
   function closeMaintenanceForm() {
-    if (document.activeElement && el.maintenanceSheet.contains(document.activeElement)) {
-      document.activeElement.blur();
-    }
-    el.maintenanceSheet.classList.remove('is-open');
-    el.maintenanceSheet.inert = true;
-    el.maintenanceSheet.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('sheet-open');
+    var opener = maintenanceFormOpener;
+    maintenanceFormOpener = null;
     editingMaintenanceId = null;
     clearMaintenanceFormErrors();
+
+    if (Focus && Focus.closeDialog) {
+      Focus.closeDialog(el.maintenanceSheet);
+    } else {
+      if (el.app) {
+        el.app.inert = false;
+      }
+      document.body.classList.remove('sheet-open');
+      if (opener && typeof opener.focus === 'function') {
+        opener.focus();
+      }
+    }
+    el.maintenanceSheet.classList.remove('is-open');
+    el.maintenanceSheet.setAttribute('aria-hidden', 'true');
+    el.maintenanceSheet.inert = true;
   }
 
   function handleMaintenanceSubmit(event) {
@@ -2272,8 +2408,8 @@
       return;
     }
     renderAll();
-    closeMaintenanceForm();
     showScreen('maintenance');
+    closeMaintenanceForm();
     showToast(existing ? 'Запись изменена' : 'Запись добавлена');
   }
 
@@ -2356,7 +2492,12 @@
     askConfirm({
       title: 'Удалить заправку?',
       message: description + '. Это действие нельзя отменить.',
-      confirmLabel: 'Удалить'
+      confirmLabel: 'Удалить',
+      focusFallback: function () {
+        return findVisibleControl('data-edit', id) ||
+          findVisibleControl('data-action', 'add') ||
+          findFirstVisible('.nav-item.is-active');
+      }
     }).then(function (confirmed) {
       if (!confirmed) {
         return;
@@ -2388,7 +2529,12 @@
     askConfirm({
       title: 'Удалить запись обслуживания?',
       message: description + '. Это действие нельзя отменить.',
-      confirmLabel: 'Удалить'
+      confirmLabel: 'Удалить',
+      focusFallback: function () {
+        return findVisibleControl('data-maintenance-edit', id) ||
+          findVisibleControl('data-action', 'add-maintenance') ||
+          findFirstVisible('.nav-item.is-active');
+      }
     }).then(function (confirmed) {
       if (!confirmed) {
         return;
@@ -2464,25 +2610,43 @@
     }).join('');
   }
 
-  function resetProfileForm() {
+  function resetProfileForm(focusAddButton) {
     el.profileForm.hidden = true;
     el.profileAddBtn.hidden = false;
     el.profileName.value = '';
     el.profileOdometer.value = '';
     el.profileError.textContent = '';
+    if (focusAddButton) {
+      el.profileAddBtn.focus();
+    }
   }
 
   function openProfiles() {
     resetProfileForm();
     renderProfiles();
     el.profilesModal.hidden = false;
-    document.body.classList.add('modal-open');
-    el.profilesClose.focus();
+    if (Focus && Focus.openDialog) {
+      Focus.openDialog(el.profilesModal, {
+        initialFocus: el.profilesClose,
+        fallback: function () {
+          return findFirstVisible('[data-profile-switch]', el.profilesList) ||
+            findFirstVisible('#profile-add-btn', el.profilesModal) ||
+            el.profilesClose;
+        }
+      });
+    } else {
+      document.body.classList.add('modal-open');
+      el.profilesClose.focus();
+    }
   }
 
   function closeProfiles() {
+    if (Focus && Focus.closeDialog) {
+      Focus.closeDialog(el.profilesModal);
+    } else {
+      document.body.classList.remove('modal-open');
+    }
     el.profilesModal.hidden = true;
-    document.body.classList.remove('modal-open');
   }
 
   function showProfileForm() {
@@ -2541,7 +2705,12 @@
       message: 'Профиль «' + profile.name + '», его заправки (' + fuelingsCount +
         ') и обслуживание (' + maintenancesCount +
         ') будут удалены. Это действие нельзя отменить.',
-      confirmLabel: 'Удалить'
+      confirmLabel: 'Удалить',
+      focusFallback: function () {
+        return findFirstVisible('[data-profile-switch]', el.profilesList) ||
+          el.profileAddBtn ||
+          el.profilesClose;
+      }
     }).then(function (confirmed) {
       if (!confirmed) {
         return;
@@ -2585,7 +2754,9 @@
     });
 
     el.profileAddBtn.addEventListener('click', showProfileForm);
-    el.profileCancel.addEventListener('click', resetProfileForm);
+    el.profileCancel.addEventListener('click', function () {
+      resetProfileForm(true);
+    });
 
     el.profileName.addEventListener('input', function () {
       el.profileError.textContent = '';
@@ -2651,12 +2822,27 @@
     el.confirmOk.textContent = settings.confirmLabel || 'Удалить';
     el.confirmModal.hidden = false;
 
+    if (Focus && Focus.openDialog) {
+      Focus.openDialog(el.confirmModal, {
+        initialFocus: el.confirmCancel,
+        fallback: settings.focusFallback || null
+      });
+    } else {
+      document.body.classList.add('modal-open');
+      el.confirmCancel.focus();
+    }
+
     return new Promise(function (resolve) {
       confirmResolver = resolve;
     });
   }
 
   function settleConfirm(value) {
+    if (Focus && Focus.closeDialog) {
+      Focus.closeDialog(el.confirmModal, { deferRestore: true });
+    } else {
+      document.body.classList.remove('modal-open');
+    }
     el.confirmModal.hidden = true;
     var resolver = confirmResolver;
     confirmResolver = null;
@@ -2667,26 +2853,31 @@
 
   function bindKeyboard() {
     document.addEventListener('keydown', function (event) {
+      var top = Focus && Focus.topDialog ? Focus.topDialog() : null;
+      if (!top) {
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        if (Focus) {
+          Focus.trapTab(top, event);
+        }
+        return;
+      }
       if (event.key !== 'Escape') {
         return;
       }
-      if (!el.confirmModal.hidden) {
+
+      event.preventDefault();
+      if (top === el.confirmModal) {
         settleConfirm(false);
-        return;
-      }
-      if (el.ocrReviewModal && !el.ocrReviewModal.hidden) {
+      } else if (top === el.ocrReviewModal) {
         closeOcrReview('scan');
-        return;
-      }
-      if (!el.profilesModal.hidden) {
+      } else if (top === el.profilesModal) {
         closeProfiles();
-        return;
-      }
-      if (el.sheet.classList.contains('is-open')) {
+      } else if (top === el.sheet) {
         closeForm();
-        return;
-      }
-      if (el.maintenanceSheet && el.maintenanceSheet.classList.contains('is-open')) {
+      } else if (top === el.maintenanceSheet) {
         closeMaintenanceForm();
       }
     });

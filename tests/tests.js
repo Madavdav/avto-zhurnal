@@ -8,6 +8,7 @@
   var C = window.MuranoCalc;
   var S = window.MuranoStorage;
   var O = window.MuranoOcr;
+  var F = window.MuranoFocus;
   var results = [];
   var NBSP = '\u00A0';
 
@@ -1443,6 +1444,234 @@
     }, 'HEIC должен быть отклонён');
   });
 
+  /* ── Доступность фокуса ───────────────────────────────── */
+
+  function focusFixture() {
+    var host = document.createElement('div');
+    host.innerHTML =
+      '<button id="focus-first" type="button">Первый</button>' +
+      '<input id="focus-middle" aria-label="Средний">' +
+      '<button id="focus-hidden" type="button" hidden>Скрытый</button>' +
+      '<button id="focus-disabled" type="button" disabled>Отключён</button>' +
+      '<button id="focus-last" type="button">Последний</button>';
+    document.body.appendChild(host);
+    return host;
+  }
+
+  function tabEvent(shift) {
+    return {
+      key: 'Tab',
+      shiftKey: Boolean(shift),
+      prevented: false,
+      preventDefault: function () {
+        this.prevented = true;
+      }
+    };
+  }
+
+  test('Фокус', 'Tab на последнем элементе возвращается к первому', function () {
+    var host = focusFixture();
+    try {
+      var first = host.querySelector('#focus-first');
+      var last = host.querySelector('#focus-last');
+      last.focus();
+      same(document.activeElement, last, 'фокус на последнем элементе');
+
+      var event = tabEvent(false);
+      same(F.trapTab(host, event), true, 'Tab перехвачен');
+      ok(event.prevented, 'действие по умолчанию отменено');
+      same(document.activeElement, first, 'фокус вернулся к первому');
+    } finally {
+      host.remove();
+    }
+  });
+
+  test('Фокус', 'Shift+Tab на первом элементе уходит к последнему', function () {
+    var host = focusFixture();
+    try {
+      var first = host.querySelector('#focus-first');
+      var last = host.querySelector('#focus-last');
+      first.focus();
+      same(document.activeElement, first, 'фокус на первом элементе');
+
+      var event = tabEvent(true);
+      same(F.trapTab(host, event), true, 'Shift+Tab перехвачен');
+      ok(event.prevented, 'действие по умолчанию отменено');
+      same(document.activeElement, last, 'фокус ушёл к последнему');
+    } finally {
+      host.remove();
+    }
+  });
+
+  test('Фокус', 'Скрытые и отключённые элементы пропускаются', function () {
+    var host = focusFixture();
+    try {
+      var items = F.focusableElements(host);
+      same(items.length, 3);
+      same(items[0].id, 'focus-first');
+      same(items[1].id, 'focus-middle');
+      same(items[2].id, 'focus-last');
+    } finally {
+      host.remove();
+    }
+  });
+
+  test('Фокус', 'Фокус переходит в диалог и не остаётся на кнопке', function () {
+    var host = focusFixture();
+    var opener = document.createElement('button');
+    opener.type = 'button';
+    opener.textContent = 'Открыть';
+    document.body.appendChild(opener);
+    try {
+      opener.focus();
+      same(document.activeElement, opener, 'до открытия фокус на кнопке');
+
+      var middle = host.querySelector('#focus-middle');
+      same(F.focusFirst(host, middle), true, 'фокус перенесён');
+      same(document.activeElement, middle, 'фокус внутри диалога');
+    } finally {
+      host.remove();
+      opener.remove();
+    }
+  });
+
+  test('Фокус', 'После закрытия фокус возвращается на открывшую кнопку', function () {
+    var host = focusFixture();
+    var opener = document.createElement('button');
+    opener.type = 'button';
+    opener.textContent = 'Открыть';
+    document.body.appendChild(opener);
+    try {
+      opener.focus();
+      host.querySelector('#focus-middle').focus();
+      same(document.activeElement, host.querySelector('#focus-middle'), 'фокус в диалоге');
+
+      same(F.restoreFocus(opener), true, 'фокус восстановлен');
+      same(document.activeElement, opener, 'фокус снова на кнопке');
+
+      host.querySelector('#focus-middle').focus();
+      var replacement = host.querySelector('#focus-last');
+      same(F.restoreFocus(null, function () { return replacement; }), true, 'запасной вариант найден');
+      same(document.activeElement, replacement, 'фокус на запасной кнопке');
+    } finally {
+      host.remove();
+      opener.remove();
+    }
+  });
+
+  test('Фокус', 'Слои диалогов изолируют фон и возвращают фокус по очереди', function () {
+    var app = document.createElement('div');
+    app.className = 'app';
+    app.innerHTML = '<button id="layer-app-opener" type="button">Открыть форму</button>';
+
+    var sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    sheet.innerHTML = '<button id="layer-sheet-first" type="button">В форме</button>';
+
+    var modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = '<button id="layer-modal-first" type="button">В подтверждении</button>';
+
+    document.body.appendChild(app);
+    document.body.appendChild(sheet);
+    document.body.appendChild(modal);
+
+    var appOpener = app.querySelector('#layer-app-opener');
+    var sheetButton = sheet.querySelector('#layer-sheet-first');
+    var modalButton = modal.querySelector('#layer-modal-first');
+
+    try {
+      appOpener.focus();
+      same(F.openDialog(sheet, { initialFocus: sheetButton }), true, 'форма открыта');
+      same(F.topDialog(), sheet, 'форма стала верхним слоем');
+      same(document.activeElement, sheetButton, 'фокус в форме');
+      ok(app.inert, 'фон приложения недоступен');
+      ok(!sheet.inert, 'форма доступна');
+      same(document.body.classList.contains('sheet-open'), true, 'страница заблокирована для формы');
+      same(document.body.classList.contains('modal-open'), false, 'модальное окно ещё не открыто');
+
+      same(F.openDialog(modal, {
+        opener: sheetButton,
+        initialFocus: modalButton
+      }), true, 'подтверждение открыто');
+      same(F.topDialog(), modal, 'подтверждение стало верхним слоем');
+      same(document.activeElement, modalButton, 'фокус в подтверждении');
+      ok(sheet.inert, 'нижняя форма недоступна');
+      ok(!modal.inert, 'подтверждение доступно');
+      ok(app.inert, 'фон остаётся недоступным');
+      same(F.focusableElements(sheet).length, 0, 'Tab не попадёт в нижнюю форму');
+      same(document.body.classList.contains('sheet-open'), true, 'блокировка формы сохраняется');
+      same(document.body.classList.contains('modal-open'), true, 'блокировка модального окна добавлена');
+
+      same(F.closeDialog(modal), true, 'подтверждение закрыто');
+      same(F.topDialog(), sheet, 'форма снова верхний слой');
+      same(document.activeElement, sheetButton, 'фокус вернулся в нижнюю форму');
+      ok(!sheet.inert, 'нижняя форма снова доступна');
+      ok(app.inert, 'фон всё ещё недоступен');
+      same(document.body.classList.contains('sheet-open'), true, 'блокировка формы сохраняется');
+      same(document.body.classList.contains('modal-open'), false, 'блокировка модального окна снята');
+
+      same(F.closeDialog(sheet), true, 'форма закрыта');
+      same(F.topDialog(), null, 'открытых слоёв нет');
+      same(document.activeElement, appOpener, 'фокус вернулся на кнопку фона');
+      ok(!app.inert, 'фон снова доступен');
+      same(document.body.classList.contains('sheet-open'), false, 'блокировка формы снята');
+      same(document.body.classList.contains('modal-open'), false, 'блокировка модального окна снята');
+    } finally {
+      if (F.isDialogOpen(modal)) {
+        F.closeDialog(modal, { restore: false });
+      }
+      if (F.isDialogOpen(sheet)) {
+        F.closeDialog(sheet, { restore: false });
+      }
+      app.remove();
+      sheet.remove();
+      modal.remove();
+    }
+  });
+
+  test('Фокус', 'Исчезнувшая кнопка заменяется запасной после перерисовки', function () {
+    var app = document.createElement('div');
+    app.className = 'app';
+    app.innerHTML = '<button id="fallback-target" type="button">Добавить</button>';
+
+    var sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    sheet.innerHTML =
+      '<button id="fallback-opener" type="button">Удалить</button>' +
+      '<button id="fallback-inside" type="button">Внутри</button>';
+
+    document.body.appendChild(app);
+    document.body.appendChild(sheet);
+
+    var target = app.querySelector('#fallback-target');
+    var opener = sheet.querySelector('#fallback-opener');
+    var inside = sheet.querySelector('#fallback-inside');
+
+    try {
+      opener.focus();
+      same(F.openDialog(sheet, {
+        opener: opener,
+        initialFocus: inside,
+        fallback: function () {
+          return target;
+        }
+      }), true, 'диалог открыт');
+      same(document.activeElement, inside, 'фокус в диалоге');
+
+      opener.remove();
+      same(F.closeDialog(sheet), true, 'диалог закрыт');
+      same(document.activeElement, target, 'фокус перешёл на запасную кнопку');
+      ok(!app.inert, 'фон снова доступен');
+    } finally {
+      if (F.isDialogOpen(sheet)) {
+        F.closeDialog(sheet, { restore: false });
+      }
+      app.remove();
+      sheet.remove();
+    }
+  });
+
   /* ── Вывод результатов ────────────────────────────────── */
 
   var passed = results.filter(function (item) { return item.ok; }).length;
@@ -1455,7 +1684,7 @@
       (failed ? '✕ ' + failed + ' провалено' : '✓ Все тесты пройдены') +
     '</span>' +
     '<span>' + passed + ' из ' + results.length + '</span>' +
-    '<span class="note">Расчёты, профили, резервные копии и защита данных</span>';
+    '<span class="note">Расчёты, профили, резервные копии, защита данных и фокус</span>';
 
   var lastGroup = null;
   var html = '';
