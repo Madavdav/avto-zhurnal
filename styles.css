@@ -53,6 +53,8 @@
 html {
   min-height: 100%;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
 }
 
 body {
@@ -66,7 +68,8 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
 }
 
 button,
@@ -102,6 +105,7 @@ a:focus-visible {
   background:
     radial-gradient(700px 420px at 85% -5%, rgba(94, 234, 212, 0.055), transparent 60%),
     var(--bg);
+  overflow-x: hidden !important;
 }
 
 /* ── Верхняя панель ─────────────────────────────────────── */
@@ -230,10 +234,14 @@ a:focus-visible {
 
 .main {
   padding: 16px 16px calc(var(--nav-height) + var(--safe-bottom) + 38px);
+  overflow-x: hidden !important;
+  max-width: 100% !important;
 }
 
 .screen {
   display: none;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
 }
 
 .screen.is-active {
@@ -652,6 +660,11 @@ a:focus-visible {
   border: 1px solid var(--border);
   background: linear-gradient(160deg, rgba(19, 30, 49, 0.72), rgba(11, 18, 31, 0.72));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .fuel-top {
@@ -728,7 +741,7 @@ a:focus-visible {
 .fuel-actions {
   display: flex;
   gap: 2px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .mini-btn {
@@ -3967,6 +3980,103 @@ body {
 
 /* ── Телефон в альбомной ориентации: компактный режим ───── */
 
+@media (max-width: 360px) {
+  #recent-list,
+  #screen-history .fuel-list,
+  #screen-maintenance .fuel-list {
+    grid-template-columns: 1fr;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .fuel-card,
+  .log-card,
+  .service-card {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 420px) {
+  *, *::before, *::after {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  html, body {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    width: 100vw !important;
+  }
+
+  .app {
+    max-width: 100vw !important;
+    width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
+  .main {
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .screen {
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  #screen-maintenance,
+  #screen-maintenance .fuel-list,
+  #screen-history,
+  #screen-history .fuel-list,
+  #recent-list {
+    grid-template-columns: 1fr !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .service-card,
+  .log-card,
+  .fuel-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+
+  .fuel-top,
+  .fuel-line,
+  .fuel-meta {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    flex-wrap: wrap !important;
+  }
+
+  .fuel-station {
+    min-width: 0 !important;
+    max-width: calc(100% - 80px) !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .fuel-total {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+  }
+}
+
 @media (orientation: landscape) and (max-height: 600px) and (max-width: 1000px) {
   :root {
     --nav-height: 60px;
@@ -4241,6 +4351,7 @@ body {
   .fuel-top {
     min-height: 21px;
     gap: 5px;
+    flex-wrap: wrap;
   }
 
   .fuel-date {
@@ -4255,9 +4366,9 @@ body {
   }
 
   .mini-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 9px;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
   }
 
   .fuel-line {
@@ -4521,9 +4632,36 @@ body {
 /* ── Уважение к уменьшению движения ─────────────────────── */
 
 @media (max-width: 359px) {
+  html, body, .app, .main, .screen {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
+  .main {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
   .fuel-top {
     flex-wrap: wrap;
     row-gap: 5px;
+    min-width: 0 !important;
+  }
+
+  .fuel-card,
+  .log-card,
+  .service-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  #screen-maintenance .fuel-list {
+    grid-template-columns: 1fr !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .form-row {
