@@ -11,6 +11,49 @@
   var Charts = window.MuranoCharts;
   var Ocr = window.MuranoOcr;
   var Focus = window.MuranoFocus;
+  var I18n = window.MuranoI18n;
+
+  if (I18n && typeof I18n.init === 'function') {
+    I18n.init();
+  }
+
+  function T(text, params) {
+    return I18n ? I18n.t(text, params) : text;
+  }
+
+  function P(key, count) {
+    if (I18n) {
+      return I18n.p(key, count);
+    }
+    if (key === 'fillup' || key === 'fillupAcc') {
+      return count === 1 ? 'заправка' : (count >= 2 && count <= 4 ? 'заправки' : 'заправок');
+    }
+    if (key === 'record') {
+      return count === 1 ? 'запись' : (count >= 2 && count <= 4 ? 'записи' : 'записей');
+    }
+    if (key === 'car') {
+      return count === 1 ? 'автомобиль' : (count >= 2 && count <= 4 ? 'автомобиля' : 'автомобилей');
+    }
+    return count === 1 ? 'файл' : (count >= 2 && count <= 4 ? 'файла' : 'файлов');
+  }
+
+  function countLabel(count, key) {
+    return count + ' ' + P(key, count);
+  }
+
+  function appLocale() {
+    return I18n ? I18n.locale() : 'ru-RU';
+  }
+
+  function appDir() {
+    return I18n ? I18n.dir() : 'ltr';
+  }
+
+  function applyTranslations() {
+    if (I18n && typeof I18n.apply === 'function') {
+      I18n.apply(document);
+    }
+  }
 
   var state = S.load();
   var currentScreen = 'home';
@@ -31,6 +74,14 @@
   var fuelFormOpener = null;
   var maintenanceFormOpener = null;
   var ocrReviewOpener = null;
+  var attachmentViewerOpener = null;
+  var maintenanceDraftAttachments = [];
+  var attachmentInputBusy = false;
+
+  var MAX_ATTACHMENTS = 5;
+  var MAX_ATTACHMENT_INPUT_BYTES = 12 * 1024 * 1024;
+  var MAX_ATTACHMENT_SIDE = 1600;
+  var ATTACHMENT_PURPOSES = ['receipt', 'invoice', 'warranty', 'photo', 'other'];
 
   var THEME_KEY = 'muranoLog.theme.v1';
   var THEME_COLORS = { light: '#f3f6fb', dark: '#07111f' };
@@ -95,15 +146,16 @@
 
     if (el.themeCurrent) {
       el.themeCurrent.textContent = themeMode === 'system'
-        ? 'Системная тема'
-        : (resolved === 'light' ? 'Светлая тема' : 'Тёмная тема');
+        ? T('Системная тема')
+        : (resolved === 'light' ? T('Светлая тема') : T('Тёмная тема'));
     }
 
     if (el.themeHint) {
       el.themeHint.textContent = themeMode === 'system'
-        ? 'Сейчас используется ' + (resolved === 'light' ? 'светлая' : 'тёмная') +
-          ' тема телефона. Приложение переключится вместе с системой.'
-        : 'Выбор сохранён на этом устройстве и не попадёт в резервную копию журнала.';
+        ? T('Сейчас используется {theme} тема телефона. Приложение переключится вместе с системой.', {
+          theme: T(resolved === 'light' ? 'светлая' : 'тёмная')
+        })
+        : T('Выбор сохранён на этом устройстве и не попадёт в резервную копию журнала.');
     }
 
     if (currentScreen === 'charts') {
@@ -265,6 +317,19 @@
     el.maintenanceFormCancel = $('maintenance-form-cancel');
     el.maintenanceFormTotal = $('maintenance-form-total');
     el.maintenanceDeleteBtn = $('maintenance-delete');
+    el.maintenanceAttachments = $('maintenance-attachments');
+    el.maintenanceAttachmentsCount = $('maintenance-attachments-count');
+    el.maintenanceAttachmentsHint = $('maintenance-attachments-hint');
+    el.maintenanceCameraInput = $('maintenance-camera-input');
+    el.maintenanceGalleryInput = $('maintenance-gallery-input');
+    el.maintenanceCameraBtn = $('maintenance-camera-btn');
+    el.maintenanceGalleryBtn = $('maintenance-gallery-btn');
+    el.attachmentViewer = $('attachment-viewer');
+    el.attachmentViewerTitle = $('attachment-viewer-title');
+    el.attachmentViewerClose = $('attachment-viewer-close');
+    el.attachmentViewerImage = $('attachment-viewer-image');
+    el.attachmentViewerMeta = $('attachment-viewer-meta');
+    el.languageSelect = $('language-select');
     el.confirmModal = $('confirm-modal');
     el.confirmTitle = $('confirm-title');
     el.confirmText = $('confirm-text');
@@ -284,7 +349,10 @@
     bindForm();
     bindOcr();
     bindMaintenanceForm();
+    bindMaintenanceAttachments();
+    bindAttachmentViewer();
     bindSettings();
+    bindLanguage();
     bindStatsPeriod();
     bindHomePeriod();
     bindProfiles();
@@ -344,7 +412,7 @@
       return '—';
     }
     try {
-      return new Intl.DateTimeFormat('ru-RU', short
+      return new Intl.DateTimeFormat(appLocale(), short
         ? { day: 'numeric', month: 'short' }
         : { day: 'numeric', month: 'long', year: 'numeric' }
       ).format(date);
@@ -355,11 +423,11 @@
 
   function currentMonthLabel() {
     try {
-      return new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' })
+      return new Intl.DateTimeFormat(appLocale(), { month: 'long', year: 'numeric' })
         .format(new Date())
         .replace(/\s*г\.$/, '');
     } catch (error) {
-      return 'в этом месяце';
+      return T('в этом месяце');
     }
   }
 
@@ -377,15 +445,15 @@
 
   function formatBytes(bytes) {
     if (!Number.isFinite(bytes) || bytes <= 0) {
-      return '0 Б';
+      return '0 ' + T('Б');
     }
     if (bytes < 1024) {
-      return bytes + ' Б';
+      return C.formatNumber(bytes, 0) + ' ' + T('Б');
     }
     if (bytes < 1024 * 1024) {
-      return (bytes / 1024).toFixed(1).replace('.', ',') + ' КБ';
+      return C.formatNumber(bytes / 1024, 1) + ' ' + T('КБ');
     }
-    return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') + ' МБ';
+    return C.formatNumber(bytes / (1024 * 1024), 1) + ' ' + T('МБ');
   }
 
   function getStats() {
@@ -448,7 +516,7 @@
     if (!el.toast) {
       return;
     }
-    el.toast.textContent = message;
+    el.toast.textContent = T(message);
     el.toast.classList.toggle('is-error', type === 'error');
     el.toast.classList.add('is-visible');
     window.clearTimeout(toastTimer);
@@ -463,7 +531,7 @@
 
   function commitState(nextState, failurePrefix) {
     if (!S.save(nextState)) {
-      var message = S.lastError || 'Не удалось сохранить данные.';
+      var message = S.lastError || T('Не удалось сохранить данные.');
       if (failurePrefix) {
         message = failurePrefix + ': ' + message;
       }
@@ -486,6 +554,36 @@
 
   function activeProfile() {
     return activeProfileIn(state);
+  }
+
+  function isDefaultProfileName(name) {
+    return name === 'Моя машина' || name === 'My car' || name === 'המכונית שלי' ||
+      /^Автомобиль \d+$/.test(name) || /^Vehicle \d+$/.test(name) || /^רכב \d+$/.test(name);
+  }
+
+  function displayProfileName(name) {
+    if (name === 'Моя машина' || name === 'My car' || name === 'המכונית שלי') {
+      return T('Моя машина');
+    }
+    var numbered = /^(?:Автомобиль|Vehicle|רכב) (\d+)$/.exec(name);
+    if (numbered) {
+      return T('Автомобиль {n}', { n: numbered[1] });
+    }
+    return name;
+  }
+
+  function stationDisplayName(record) {
+    if (!record) {
+      return T('Без названия АЗС');
+    }
+    if (!record.station) {
+      return T('Без названия АЗС');
+    }
+    if (record.stationId === 'other' || record.station === 'Другое' ||
+        record.station === 'Other' || record.station === 'אחר') {
+      return T('Другое');
+    }
+    return T(record.station);
   }
 
   function getFuelings() {
@@ -558,6 +656,7 @@
     if (name === 'maintenance') {
       renderMaintenance();
     }
+    applyTranslations();
   }
 
   function bindStatsPeriod() {
@@ -589,6 +688,19 @@
       var addMaintenanceButton = event.target.closest('[data-action="add-maintenance"]');
       if (addMaintenanceButton) {
         openMaintenanceForm(null, addMaintenanceButton);
+        return;
+      }
+      var attachmentButton = event.target.closest('[data-attachment-record]');
+      if (attachmentButton) {
+        var attachment = findRecordAttachment(
+          attachmentButton.getAttribute('data-attachment-record'),
+          attachmentButton.getAttribute('data-attachment-id')
+        );
+        if (attachment) {
+          openAttachmentViewer(attachment, attachmentButton);
+        } else {
+          showToast(T('Вложение не найдено.'), 'error');
+        }
         return;
       }
       var maintenanceEditButton = event.target.closest('button[data-maintenance-edit]');
@@ -624,32 +736,32 @@
   }
 
   function homePeriodText() {
-    return homePeriod === 'month' ? currentMonthLabel() : 'за всё время';
+    return homePeriod === 'month' ? currentMonthLabel() : T('за всё время');
   }
 
   function fuelCostNote(fuelStats) {
     if (homePeriod === 'month') {
       if (!fuelStats.recordsCount) {
-        return 'в этом месяце нет заправок';
+        return T('в этом месяце нет заправок');
       }
       if (fuelStats.startOdometer === null) {
-        return 'нужна заправка до начала месяца';
+        return T('нужна заправка до начала месяца');
       }
       if (fuelStats.distance === null) {
-        return 'проверьте пробег: он не вырос';
+        return T('проверьте пробег: он не вырос');
       }
     } else {
       if (!fuelStats.recordsCount) {
-        return 'пока нет заправок';
+        return T('пока нет заправок');
       }
       if (!fuelStats.hasInitialOdometer) {
-        return 'укажите начальный пробег';
+        return T('укажите начальный пробег');
       }
       if (fuelStats.distance === null) {
-        return 'проверьте пробег от начального';
+        return T('проверьте пробег от начального');
       }
     }
-    return 'нужны данные о пробеге';
+    return T('нужны данные о пробеге');
   }
 
   function renderHome() {
@@ -669,26 +781,26 @@
 
     if (stats.recordsCount === 0) {
       el.heroDate.textContent = profile.initialOdometer !== null
-        ? 'старт учёта'
-        : 'нет данных';
+        ? T('старт учёта')
+        : T('нет данных');
       el.heroHint.textContent = profile.initialOdometer !== null
-        ? 'Добавьте первую заправку — здесь появится пробег, расход и расходы.'
-        : 'Укажите начальный пробег в настройках или добавьте первую заправку.';
+        ? T('Добавьте первую заправку — здесь появится пробег, расход и расходы.')
+        : T('Укажите начальный пробег в настройках или добавьте первую заправку.');
     } else {
-      el.heroDate.textContent = 'обновлено ' + formatDate(stats.lastDate, true);
+      el.heroDate.textContent = T('обновлено ') + formatDate(stats.lastDate, true);
       el.heroHint.textContent =
-        C.formatNumber(stats.totalLiters, 1) + ' л за всё время · ' +
-        stats.recordsCount + ' ' + plural(stats.recordsCount, 'заправка', 'заправки', 'заправок');
+        C.formatNumber(stats.totalLiters, 1) + T(' л за всё время · ') +
+        countLabel(stats.recordsCount, 'fillup');
     }
 
     if (stats.averageConsumption !== null) {
       el.statConsumption.textContent = C.formatNumber(stats.averageConsumption, 1);
       el.statConsumptionNote.textContent = stats.lastConsumption !== null
-        ? 'последний: ' + C.formatNumber(stats.lastConsumption, 1) + ' л/100 км'
-        : 'по заправкам до полного';
+        ? T('последний: ') + C.formatNumber(stats.lastConsumption, 1) + T(' л/100 км')
+        : T('по заправкам до полного');
     } else {
       el.statConsumption.textContent = '—';
-      el.statConsumptionNote.textContent = 'нужны две заправки до полного';
+      el.statConsumptionNote.textContent = T('нужны две заправки до полного');
     }
 
     el.statFuelSpent.textContent = C.formatMoney(fuelStats.totalSpent);
@@ -696,8 +808,8 @@
 
     el.statTotal.textContent = C.formatMoney(stats.totalSpent);
     el.statTotalNote.textContent = stats.recordsCount > 0
-      ? 'за ' + stats.recordsCount + ' ' + plural(stats.recordsCount, 'заправку', 'заправки', 'заправок')
-      : 'пока нет заправок';
+      ? T('за ') + countLabel(stats.recordsCount, 'fillupAcc')
+      : T('пока нет заправок');
 
     var maintenanceStatsHome = C.calculateMaintenanceStats ? C.calculateMaintenanceStats(getMaintenances()) : { recordsCount: 0, totalCost: 0 };
     if (el.statMaintenanceTotal) {
@@ -705,14 +817,14 @@
     }
     if (el.statMaintenanceNote) {
       el.statMaintenanceNote.textContent = maintenanceStatsHome.recordsCount > 0
-        ? 'за ' + maintenanceStatsHome.recordsCount + ' ' + plural(maintenanceStatsHome.recordsCount, 'запись', 'записи', 'записей') + ' · за всё время'
-        : 'пока нет записей';
+        ? T('за ') + countLabel(maintenanceStatsHome.recordsCount, 'record') + T(' · за всё время')
+        : T('пока нет записей');
     }
 
     if (fuelStats.costPerKm !== null) {
       el.statCostKm.textContent = C.formatMoney(fuelStats.costPerKm);
-      el.statCostKmNote.textContent = 'на ' + C.formatNumber(fuelStats.distance, 0) +
-        ' км ' + (homePeriod === 'month' ? 'за этот месяц' : 'за всё время');
+      el.statCostKmNote.textContent = T('на ') + C.formatNumber(fuelStats.distance, 0) +
+        T(' км ') + (homePeriod === 'month' ? T('за этот месяц') : T('за всё время'));
     } else {
       el.statCostKm.textContent = '—';
       el.statCostKmNote.textContent = fuelCostNote(fuelStats);
@@ -722,31 +834,33 @@
     el.recentList.innerHTML = recent.length
       ? recent.map(fuelCardHtml).join('')
       : emptyStateHtml(
-          'Заправок пока нет',
-          'Добавьте первую запись — приложение посчитает расход топлива и его стоимость на километр.',
+          T('Заправок пока нет'),
+          T('Добавьте первую запись — приложение посчитает расход топлива и его стоимость на километр.'),
           true
         );
+    applyTranslations();
   }
 
   /* ── Журнал ────────────────────────────────────────────── */
 
   function fuelCardHtml(item) {
-    var station = item.station
-      ? '<span class="fuel-station" dir="auto">' + escapeHtml(item.station) + '</span>'
+    var stationName = stationDisplayName(item);
+    var station = item.station || item.stationId === 'other'
+      ? '<span class="fuel-station" dir="auto" data-i18n-ignore>' + escapeHtml(stationName) + '</span>'
       : '<span class="fuel-station is-empty">Без названия АЗС</span>';
 
     var note = item.note
-      ? '<p class="fuel-note log-note" dir="auto">' + escapeHtml(item.note) + '</p>'
+      ? '<p class="fuel-note log-note" dir="auto" data-i18n-ignore>' + escapeHtml(item.note) + '</p>'
       : '';
 
     var fuelType = C.normalizeFuelType(item.fuelType);
     var fuelBadge = fuelType
       ? '<span class="badge-fuel' + (fuelType === 'diesel' ? ' is-diesel' : '') +
-          '" title="' + escapeHtml(C.fuelTypeName(fuelType)) + '">' +
-          (fuelType === 'diesel' ? 'Дизель' : 'АИ-95') + '</span>'
+          '" title="' + escapeHtml(T(C.fuelTypeName(fuelType))) + '">' +
+          (fuelType === 'diesel' ? T('Дизель') : T('АИ-95')) + '</span>'
       : '';
     var corporateBadge = item.corporate === true
-      ? '<span class="badge-corporate" title="Корпоративная заправка через דלקן">דלקן</span>'
+      ? '<span class="badge-corporate" title="' + escapeHtml(T('Корпоративная заправка через דלקן')) + '">דלקן</span>'
       : '';
 
     return (
@@ -757,14 +871,14 @@
           '</time>' +
           '<div class="log-badges">' +
             fuelBadge +
-            (item.fullTank ? '<span class="badge-full">до полного</span>' : '') +
+            (item.fullTank ? '<span class="badge-full">' + T('до полного') + '</span>' : '') +
             corporateBadge +
           '</div>' +
           '<div class="fuel-actions">' +
-            '<button class="mini-btn" type="button" data-edit="' + escapeHtml(item.id) + '" aria-label="Изменить заправку">' +
+            '<button class="mini-btn" type="button" data-edit="' + escapeHtml(item.id) + '" aria-label="' + escapeHtml(T('Изменить заправку')) + '">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>' +
             '</button>' +
-            '<button class="mini-btn mini-danger" type="button" data-delete="' + escapeHtml(item.id) + '" aria-label="Удалить заправку">' +
+            '<button class="mini-btn mini-danger" type="button" data-delete="' + escapeHtml(item.id) + '" aria-label="' + escapeHtml(T('Удалить заправку')) + '">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg>' +
             '</button>' +
           '</div>' +
@@ -773,13 +887,13 @@
           '<div class="log-station-block">' +
             station +
             '<div class="fuel-meta">' +
-              '<span>' + escapeHtml(C.formatMoney(item.pricePerLiter)) + '/л</span>' +
-              '<span>' + escapeHtml(C.formatNumber(item.odometer, 0)) + ' км</span>' +
+              '<span>' + escapeHtml(C.formatMoney(item.pricePerLiter)) + T('/л') + '</span>' +
+              '<span>' + escapeHtml(C.formatNumber(item.odometer, 0)) + ' ' + T('км') + '</span>' +
             '</div>' +
           '</div>' +
           '<div class="log-amounts">' +
-            '<span class="log-litres" aria-label="' + escapeHtml(C.formatNumber(item.liters, 2)) + ' литров">' +
-              '<strong>' + escapeHtml(C.formatNumber(item.liters, 2)) + '</strong><span>л</span>' +
+            '<span class="log-litres" aria-label="' + escapeHtml(C.formatNumber(item.liters, 2) + ' ' + T('литров')) + '">' +
+              '<strong>' + escapeHtml(C.formatNumber(item.liters, 2)) + '</strong><span>' + T('л') + '</span>' +
             '</span>' +
             '<strong class="fuel-total">' + escapeHtml(C.formatMoney(item.total)) + '</strong>' +
           '</div>' +
@@ -810,17 +924,18 @@
     var stats = getStats();
 
     el.historySummary.innerHTML =
-      '<div class="summary-item"><span class="summary-label">Записей</span><span class="summary-value">' + records.length + '</span></div>' +
-      '<div class="summary-item"><span class="summary-label">Литров</span><span class="summary-value">' + escapeHtml(C.formatNumber(stats.totalLiters, 1)) + ' л</span></div>' +
-      '<div class="summary-item"><span class="summary-label">Потрачено</span><span class="summary-value">' + escapeHtml(C.formatMoney(stats.totalSpent)) + '</span></div>';
+      '<div class="summary-item"><span class="summary-label">Записей</span><span class="summary-value" data-i18n-ignore>' + records.length + '</span></div>' +
+      '<div class="summary-item"><span class="summary-label">Литров</span><span class="summary-value" data-i18n-ignore>' + escapeHtml(C.formatNumber(stats.totalLiters, 1)) + ' ' + T('л') + '</span></div>' +
+      '<div class="summary-item"><span class="summary-label">Потрачено</span><span class="summary-value" data-i18n-ignore>' + escapeHtml(C.formatMoney(stats.totalSpent)) + '</span></div>';
 
     el.historyList.innerHTML = records.length
       ? records.map(fuelCardHtml).join('')
       : emptyStateHtml(
-          'Журнал пуст',
-          'Здесь будут все заправки. Начните с первой — это займёт меньше минуты.',
+          T('Журнал пуст'),
+          T('Здесь будут все заправки. Начните с первой — это займёт меньше минуты.'),
           true
         );
+    applyTranslations();
   }
 
   function maintenanceEmptyStateHtml() {
@@ -849,15 +964,16 @@
     el.maintenanceTotalAll.textContent = C.formatMoney(stats.totalCost);
     if (stats.recordsCount > 0) {
       el.maintenanceSummaryMeta.textContent =
-        stats.recordsCount + ' ' + plural(stats.recordsCount, 'запись', 'записи', 'записей') +
-        ' · запчасти ' + C.formatMoney(stats.totalParts) +
-        ' · работы ' + C.formatMoney(stats.totalLabor);
+        countLabel(stats.recordsCount, 'record') +
+        T(' · запчасти ') + C.formatMoney(stats.totalParts) +
+        T(' · работы ') + C.formatMoney(stats.totalLabor);
     } else {
-      el.maintenanceSummaryMeta.textContent = 'пока нет записей';
+      el.maintenanceSummaryMeta.textContent = T('пока нет записей');
     }
 
     if (!records.length) {
       el.maintenanceList.innerHTML = maintenanceEmptyStateHtml();
+      applyTranslations();
       return;
     }
 
@@ -868,15 +984,15 @@
       var meta = [];
 
       if (parts > 0) {
-        meta.push('запчасти ' + C.formatMoney(parts));
+        meta.push(T('запчасти ') + C.formatMoney(parts));
       }
       if (labor > 0) {
-        meta.push('работы ' + C.formatMoney(labor));
+        meta.push(T('работы ') + C.formatMoney(labor));
       }
       if (!meta.length) {
-        meta.push('без затрат');
+        meta.push(T('без затрат'));
       }
-      meta.push(C.formatNumber(item.odometer, 0) + ' км');
+      meta.push(C.formatNumber(item.odometer, 0) + ' ' + T('км'));
 
       return '<article class="fuel-card log-card service-card" data-card-id="' + escapeHtml(item.id) + '">' +
         '<div class="log-top">' +
@@ -885,17 +1001,17 @@
           '</time>' +
           '<div class="log-badges"><span class="badge-service">Сервис</span></div>' +
           '<div class="fuel-actions">' +
-            '<button class="mini-btn" type="button" data-maintenance-edit="' + escapeHtml(item.id) + '" aria-label="Изменить запись обслуживания">' +
+            '<button class="mini-btn" type="button" data-maintenance-edit="' + escapeHtml(item.id) + '" aria-label="' + escapeHtml(T('Изменить запись обслуживания')) + '">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
             '</button>' +
-            '<button class="mini-btn mini-danger" type="button" data-maintenance-delete="' + escapeHtml(item.id) + '" aria-label="Удалить запись обслуживания">' +
+            '<button class="mini-btn mini-danger" type="button" data-maintenance-delete="' + escapeHtml(item.id) + '" aria-label="' + escapeHtml(T('Удалить запись обслуживания')) + '">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>' +
             '</button>' +
           '</div>' +
         '</div>' +
         '<div class="log-body">' +
           '<div class="log-station-block">' +
-            '<span class="fuel-station" dir="auto">' + escapeHtml(item.title) + '</span>' +
+            '<span class="fuel-station" dir="auto" data-i18n-ignore>' + escapeHtml(item.title) + '</span>' +
             '<div class="fuel-meta">' +
               meta.map(function (part) { return '<span>' + escapeHtml(part) + '</span>'; }).join('') +
             '</div>' +
@@ -904,9 +1020,11 @@
             '<strong class="fuel-total">' + C.formatMoney(total) + '</strong>' +
           '</div>' +
         '</div>' +
-        (item.note ? '<p class="fuel-note log-note" dir="auto">' + escapeHtml(item.note).replace(/\n/g, '<br>') + '</p>' : '') +
+        attachmentPreviewHtml(item) +
+        (item.note ? '<p class="fuel-note log-note" dir="auto" data-i18n-ignore>' + escapeHtml(item.note).replace(/\n/g, '<br>') + '</p>' : '') +
       '</article>';
     }).join('');
+    applyTranslations();
   }
 
   /* ── Графики ───────────────────────────────────────────── */
@@ -916,39 +1034,40 @@
 
     Charts.renderConsumption(el.consumptionChart, stats.segments);
     el.consumptionBadge.textContent = stats.averageConsumption !== null
-      ? C.formatNumber(stats.averageConsumption, 1) + ' л/100'
-      : 'нет данных';
+      ? C.formatNumber(stats.averageConsumption, 1) + ' ' + T('л/100')
+      : T('нет данных');
 
     var series = C.monthlyExpenseSeries(getFuelings(), 6, new Date());
     Charts.renderExpenses(el.expensesChart, series);
     var total = series.reduce(function (sum, item) { return sum + item.total; }, 0);
-    el.expensesBadge.textContent = total > 0 ? C.formatMoney(total) : 'нет данных';
+    el.expensesBadge.textContent = total > 0 ? C.formatMoney(total) : T('нет данных');
+    applyTranslations();
   }
 
   /* ── Статистика за период и по АЗС ─────────────────────── */
 
   function periodText(period) {
     if (period === 'month') {
-      return 'за этот месяц';
+      return T('за этот месяц');
     }
     if (period === 'prev-month') {
-      return 'за прошлый месяц';
+      return T('за прошлый месяц');
     }
     if (period === 'year') {
-      return 'за этот год';
+      return T('за этот год');
     }
     if (period === 'last30') {
-      return 'за последние 30 дней';
+      return T('за последние 30 дней');
     }
-    return 'за всё время';
+    return T('за всё время');
   }
 
   function stationHighlightHtml(label, station, value, tone) {
     return (
       '<div class="station-highlight ' + tone + '">' +
         '<span class="station-highlight-label">' + escapeHtml(label) + '</span>' +
-        '<strong class="station-highlight-name">' + escapeHtml(station.name) + '</strong>' +
-        '<span class="station-highlight-value">' + escapeHtml(value) + '</span>' +
+        '<strong class="station-highlight-name" data-i18n-ignore>' + escapeHtml(T(station.name)) + '</strong>' +
+        '<span class="station-highlight-value" data-i18n-ignore>' + escapeHtml(value) + '</span>' +
       '</div>'
     );
   }
@@ -970,20 +1089,21 @@
 
     if (summary.recordsCount > 0) {
       var meta = [
-        summary.recordsCount + ' ' + plural(summary.recordsCount, 'заправка', 'заправки', 'заправок'),
-        C.formatNumber(summary.totalLiters, 1) + ' л'
+        countLabel(summary.recordsCount, 'fillup'),
+        C.formatNumber(summary.totalLiters, 1) + ' ' + T('л')
       ];
       if (summary.averagePrice !== null) {
-        meta.push('средняя ' + C.formatMoney(summary.averagePrice) + '/л');
+        meta.push(T('средняя ') + C.formatMoney(summary.averagePrice) + T('/л'));
       }
       el.statsMeta.textContent = meta.join(' · ');
     } else {
-      el.statsMeta.textContent = 'За выбранный период заправок пока нет.';
+      el.statsMeta.textContent = T('За выбранный период заправок пока нет.');
     }
 
     if (!stationStats.recordsCount) {
       el.stationHighlights.innerHTML = '';
       el.stationList.innerHTML = '<p class="stats-empty">Добавьте заправку и укажите АЗС — здесь появится сравнение.</p>';
+      applyTranslations();
       return;
     }
 
@@ -992,13 +1112,13 @@
 
     el.stationHighlights.innerHTML =
       stationHighlightHtml(
-        'Чаще всего',
+        T('Чаще всего'),
         topVisits,
-        topVisits.count + ' ' + plural(topVisits.count, 'заправка', 'заправки', 'заправок'),
+        countLabel(topVisits.count, 'fillup'),
         'is-visits'
       ) +
       stationHighlightHtml(
-        'Больше расходов',
+        T('Больше расходов'),
         topSpent,
         C.formatMoney(topSpent.total),
         'is-spent'
@@ -1009,7 +1129,7 @@
     }, 0);
 
     el.stationList.innerHTML =
-      '<div class="station-list-head"><span>Все АЗС</span><span>Потрачено</span></div>' +
+      '<div class="station-list-head"><span>' + T('Все АЗС') + '</span><span>' + T('Потрачено') + '</span></div>' +
       stationStats.stations.map(function (station) {
         var width = maxSpent > 0
           ? Math.max(4, Math.round((station.total / maxSpent) * 100))
@@ -1017,54 +1137,55 @@
         return (
           '<div class="station-row">' +
             '<div class="station-row-top">' +
-              '<span class="station-name">' + escapeHtml(station.name) + '</span>' +
-              '<span class="station-total">' + escapeHtml(C.formatMoney(station.total)) + '</span>' +
+              '<span class="station-name" data-i18n-ignore>' + escapeHtml(T(station.name)) + '</span>' +
+              '<span class="station-total" data-i18n-ignore>' + escapeHtml(C.formatMoney(station.total)) + '</span>' +
             '</div>' +
             '<div class="station-meter" aria-hidden="true"><span style="width:' + width + '%"></span></div>' +
             '<div class="station-meta">' +
-              '<span>' + station.count + ' ' + plural(station.count, 'заправка', 'заправки', 'заправок') + '</span>' +
-              '<span>' + escapeHtml(C.formatNumber(station.liters, 1)) + ' л</span>' +
+              '<span>' + countLabel(station.count, 'fillup') + '</span>' +
+              '<span>' + escapeHtml(C.formatNumber(station.liters, 1)) + ' ' + T('л') + '</span>' +
               (station.averagePrice !== null
-                ? '<span>' + escapeHtml(C.formatMoney(station.averagePrice)) + '/л</span>'
+                ? '<span>' + escapeHtml(C.formatMoney(station.averagePrice)) + T('/л') + '</span>'
                 : '') +
             '</div>' +
           '</div>'
         );
       }).join('');
+    applyTranslations();
   }
 
   /* ── Настройки ─────────────────────────────────────────── */
 
   function snapshotReasonText(reason) {
     if (reason === 'before-import') {
-      return 'перед импортом';
+      return T('перед импортом');
     }
     if (reason === 'before-clear') {
-      return 'перед удалением данных';
+      return T('перед удалением данных');
     }
-    return 'страховочная копия';
+    return T('страховочная копия');
   }
 
   function formatSnapshotDate(iso) {
     var date = new Date(iso);
     if (Number.isNaN(date.getTime())) {
-      return 'неизвестное время';
+      return T('неизвестное время');
     }
     try {
-      return new Intl.DateTimeFormat('ru-RU', {
+      return new Intl.DateTimeFormat(appLocale(), {
         day: 'numeric',
         month: 'short',
         hour: '2-digit',
         minute: '2-digit'
       }).format(date);
     } catch (error) {
-      return date.toLocaleString('ru-RU');
+      return date.toLocaleString(appLocale());
     }
   }
 
   function renderSettings() {
     var profile = activeProfile();
-    el.settingsProfileName.value = profile.name;
+    el.settingsProfileName.value = displayProfileName(profile.name);
     el.settingsOdometer.value = profile.initialOdometer !== null
       ? String(Math.round(profile.initialOdometer))
       : '';
@@ -1073,11 +1194,10 @@
     var count = countRecordsForProfile(profile);
     var total = countAllRecords(state);
     el.storageInfo.textContent = info.available
-      ? 'В этом автомобиле: ' + count + ' ' + plural(count, 'запись', 'записи', 'записей') +
-        ' · всего: ' + total + ' · ' + state.profiles.length + ' ' +
-        plural(state.profiles.length, 'автомобиль', 'автомобиля', 'автомобилей') +
+      ? T('В этом автомобиле: ') + countLabel(count, 'record') +
+        T(' · всего: ') + total + ' · ' + countLabel(state.profiles.length, 'car') +
         ' · ' + formatBytes(info.bytes)
-      : 'Локальное хранилище недоступно в этом браузере.';
+      : T('Локальное хранилище недоступно в этом браузере.');
 
     if (el.snapshotInfo && el.restoreSnapshotBtn) {
       var snapshot = null;
@@ -1091,15 +1211,15 @@
       if (snapshot) {
         var snapshotCount = countAllRecords(snapshot.state);
         el.restoreSnapshotBtn.hidden = false;
-        el.snapshotInfo.textContent = 'Последняя копия: ' +
+        el.snapshotInfo.textContent = T('Последняя копия: ') +
           formatSnapshotDate(snapshot.createdAt) + ', ' +
           snapshotReasonText(snapshot.reason) + ' · ' +
-          snapshotCount + ' ' + plural(snapshotCount, 'запись', 'записи', 'записей') + '.';
+          countLabel(snapshotCount, 'record') + '.';
       } else {
         el.restoreSnapshotBtn.hidden = true;
         el.snapshotInfo.textContent = snapshotError
-          ? 'Страховочную копию не удалось прочитать.'
-          : 'Страховочная копия создаётся автоматически перед импортом или удалением всех данных.';
+          ? T('Страховочную копию не удалось прочитать.')
+          : T('Страховочная копия создаётся автоматически перед импортом или удалением всех данных.');
       }
     }
   }
@@ -1110,8 +1230,12 @@
       el.settingsError.textContent = '';
 
       var name = el.settingsProfileName.value.trim();
+      var currentName = activeProfile().name;
+      if (isDefaultProfileName(currentName) && name === T('Моя машина')) {
+        name = currentName;
+      }
       if (!name) {
-        el.settingsError.textContent = 'Введите название автомобиля.';
+        el.settingsError.textContent = T('Введите название автомобиля.');
         el.settingsProfileName.focus();
         return;
       }
@@ -1120,7 +1244,7 @@
       var value = raw === '' ? null : C.parseNumber(raw);
 
       if (raw !== '' && (value === null || value < 0)) {
-        el.settingsError.textContent = 'Введите пробег числом, например 130000.';
+        el.settingsError.textContent = T('Введите пробег числом, например 130000.');
         el.settingsOdometer.focus();
         return;
       }
@@ -1131,11 +1255,11 @@
       nextProfile.initialOdometer = value === null ? null : Math.round(value);
       nextProfile.updatedAt = new Date().toISOString();
 
-      if (!commitState(next, 'Настройки не сохранены')) {
+      if (!commitState(next, T('Настройки не сохранены'))) {
         return;
       }
       renderAll();
-      showToast('Автомобиль сохранён');
+      showToast(T('Автомобиль сохранён'));
     });
 
     el.settingsProfileName.addEventListener('input', function () {
@@ -1155,9 +1279,9 @@
     el.exportBtn.addEventListener('click', function () {
       try {
         var filename = S.downloadBackup(state);
-        showToast('Файл ' + filename + ' сохранён');
+        showToast(T('Файл ') + filename + T(' сохранён'));
       } catch (error) {
-        showToast('Не удалось создать файл резервной копии.', 'error');
+        showToast(T('Не удалось создать файл резервной копии.'), 'error');
       }
     });
 
@@ -1173,8 +1297,8 @@
     }
     el.importFile.value = '';
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Файл слишком большой для резервной копии.', 'error');
+    if (file.size > 50 * 1024 * 1024) {
+      showToast(T('Файл слишком большой для резервной копии.'), 'error');
       return;
     }
 
@@ -1189,14 +1313,12 @@
 
       var importedCount = countAllRecords(imported);
       return askConfirm({
-        title: 'Импортировать данные?',
-        message: 'Будет загружено ' + imported.profiles.length + ' ' +
-          plural(imported.profiles.length, 'автомобиль', 'автомобиля', 'автомобилей') +
-          ' и ' + importedCount + ' ' +
-          plural(importedCount, 'запись', 'записи', 'записей') +
-          '. Текущие данные (' + countAllRecords(state) + ') будут заменены. ' +
-          'Перед импортом автоматически создаётся страховочная копия.',
-        confirmLabel: 'Импортировать',
+        title: T('Импортировать данные?'),
+        message: T('Будет загружено ') + countLabel(imported.profiles.length, 'car') +
+          T(' и ') + countLabel(importedCount, 'record') +
+          T('. Текущие данные (') + countAllRecords(state) + T(') будут заменены. ') +
+          T('Перед импортом автоматически создаётся страховочная копия.'),
+        confirmLabel: T('Импортировать'),
         focusFallback: function () {
           return el.exportBtn;
         }
@@ -1206,22 +1328,21 @@
         }
 
         if (!S.createSnapshot(state, 'before-import')) {
-          showToast('Импорт отменён. ' +
-            (S.lastError || 'Не удалось создать страховочную копию.'), 'error');
+          showToast(T('Импорт отменён. ') +
+            (S.lastError || T('Не удалось создать страховочную копию.')), 'error');
           return;
         }
         renderSettings();
 
-        if (!commitState(imported, 'Импорт отменён. Текущие данные не изменены')) {
+        if (!commitState(imported, T('Импорт отменён. Текущие данные не изменены'))) {
           return;
         }
         renderAll();
-        showToast('Импортировано ' + importedCount + ' ' +
-          plural(importedCount, 'запись', 'записи', 'записей') +
-          '. Страховочная копия сохранена.');
+        showToast(T('Импортировано ') + countLabel(importedCount, 'record') +
+          T('. Страховочная копия сохранена.'));
       });
     }).catch(function () {
-      showToast('Не удалось прочитать файл.', 'error');
+      showToast(T('Не удалось прочитать файл.'), 'error');
     });
   }
 
@@ -1239,27 +1360,26 @@
 
   function requestClearAll() {
     askConfirm({
-      title: 'Удалить все данные?',
-      message: 'Все автомобили, заправки, обслуживание и настройки будут удалены с этого устройства. ' +
-        'Перед удалением автоматически создаётся страховочная копия — её можно будет восстановить.',
-      confirmLabel: 'Удалить всё'
+      title: T('Удалить все данные?'),
+      message: T('Все автомобили, заправки, обслуживание и настройки будут удалены с этого устройства. Перед удалением автоматически создаётся страховочная копия — её можно будет восстановить.'),
+      confirmLabel: T('Удалить всё')
     }).then(function (confirmed) {
       if (!confirmed) {
         return;
       }
 
       if (!S.createSnapshot(state, 'before-clear')) {
-        showToast('Удаление отменено. ' +
-          (S.lastError || 'Не удалось создать страховочную копию.'), 'error');
+        showToast(T('Удаление отменено. ') +
+          (S.lastError || T('Не удалось создать страховочную копию.')), 'error');
         return;
       }
       renderSettings();
 
-      if (!commitState(S.defaultState(), 'Удаление отменено. Данные не изменены')) {
+      if (!commitState(S.defaultState(), T('Удаление отменено. Данные не изменены'))) {
         return;
       }
       renderAll();
-      showToast('Все данные удалены. Страховочная копия сохранена.');
+      showToast(T('Все данные удалены. Страховочная копия сохранена.'));
     });
   }
 
@@ -1268,21 +1388,21 @@
     try {
       snapshot = S.readSnapshot();
     } catch (error) {
-      showToast(S.lastError || 'Не удалось прочитать страховочную копию.', 'error');
+      showToast(S.lastError || T('Не удалось прочитать страховочную копию.'), 'error');
       return;
     }
     if (!snapshot) {
-      showToast('Страховочная копия не найдена.', 'error');
+      showToast(T('Страховочная копия не найдена.'), 'error');
       return;
     }
 
     var count = countFuelings(snapshot.state);
     askConfirm({
-      title: 'Восстановить страховочную копию?',
-      message: 'Будут восстановлены данные на ' + formatSnapshotDate(snapshot.createdAt) +
-        ' (' + count + ' ' + plural(count, 'запись', 'записи', 'записей') + '). ' +
-        'Текущие данные будут заменены.',
-      confirmLabel: 'Восстановить'
+      title: T('Восстановить страховочную копию?'),
+      message: T('Будут восстановлены данные на ') + formatSnapshotDate(snapshot.createdAt) +
+        ' (' + countLabel(count, 'record') + '). ' +
+        T('Текущие данные будут заменены.'),
+      confirmLabel: T('Восстановить')
     }).then(function (confirmed) {
       if (!confirmed) {
         return;
@@ -1290,13 +1410,13 @@
 
       var restored = S.restoreSnapshot();
       if (!restored) {
-        showToast('Не удалось восстановить копию. ' +
-          (S.lastError || 'Данные не изменены.'), 'error');
+        showToast(T('Не удалось восстановить копию. ') +
+          (S.lastError || T('Данные не изменены.')), 'error');
         return;
       }
       state = restored.state;
       renderAll();
-      showToast('Данные восстановлены из страховочной копии');
+      showToast(T('Данные восстановлены из страховочной копии'));
     });
   }
 
@@ -1325,9 +1445,9 @@
       el.odometerAssist.hidden = false;
       el.odometerAssist.classList.add('is-warning');
       el.odometerAssistText.textContent = previousRecord
-        ? 'Подставлен пробег прошлой заправки (' + C.formatNumber(previousRecord.odometer, 0) +
-          ' км). Замените его новым значением.'
-        : 'Пробег подставлен автоматически. Проверьте и укажите новое значение.';
+        ? T('Подставлен пробег прошлой заправки (') + C.formatNumber(previousRecord.odometer, 0) +
+          T(' км). Замените его новым значением.')
+        : T('Пробег подставлен автоматически. Проверьте и укажите новое значение.');
       el.odometerAssistAction.hidden = true;
       return;
     }
@@ -1336,7 +1456,7 @@
       el.odometerAssist.hidden = false;
       el.odometerAssist.classList.remove('is-warning');
       el.odometerAssistText.textContent =
-        'Похоже, полный пробег: ' + C.formatNumber(suggestion, 0) + ' км.';
+        T('Похоже, полный пробег: ') + C.formatNumber(suggestion, 0) + T(' км.');
       el.odometerAssistAction.hidden = false;
       return;
     }
@@ -1346,7 +1466,7 @@
       el.odometerAssist.hidden = false;
       el.odometerAssist.classList.add('is-warning');
       el.odometerAssistText.textContent =
-        'Пробег совпадает с предыдущей записью. Возможно, вы забыли его обновить.';
+        T('Пробег совпадает с предыдущей записью. Возможно, вы забыли его обновить.');
       el.odometerAssistAction.hidden = true;
       return;
     }
@@ -1355,8 +1475,8 @@
       el.odometerAssist.hidden = false;
       el.odometerAssist.classList.add('is-warning');
       el.odometerAssistText.textContent =
-        'Меньше предыдущей записи (' + C.formatNumber(previous, 0) +
-        ' км). Можно сохранить, если исправляете ошибку.';
+        T('Меньше предыдущей записи (') + C.formatNumber(previous, 0) +
+        T(' км). Можно сохранить, если исправляете ошибку.');
       el.odometerAssistAction.hidden = true;
       return;
     }
@@ -1420,7 +1540,7 @@
     if (editingId) {
       record = findFueling(editingId);
       if (!record) {
-        showToast('Заправка не найдена.', 'error');
+        showToast(T('Заправка не найдена.'), 'error');
         editingId = null;
         return;
       }
@@ -1432,8 +1552,8 @@
     el.formError.textContent = '';
 
     if (record) {
-      el.sheetTitle.textContent = 'Изменить заправку';
-      el.fuelSubmit.textContent = 'Сохранить изменения';
+      el.sheetTitle.textContent = T('Изменить заправку');
+      el.fuelSubmit.textContent = T('Сохранить изменения');
       el.fuelDelete.hidden = false;
       el.fuelDate.value = record.date;
       el.fuelOdometer.value = C.formatNumber(record.odometer, 0);
@@ -1462,8 +1582,8 @@
       };
     } else {
       var stats = getStats();
-      el.sheetTitle.textContent = 'Новая заправка';
-      el.fuelSubmit.textContent = 'Сохранить заправку';
+      el.sheetTitle.textContent = T('Новая заправка');
+      el.fuelSubmit.textContent = T('Сохранить заправку');
       el.fuelDelete.hidden = true;
       el.fuelDate.value = todayIso();
       el.fuelOdometer.value = stats.currentOdometer !== null
@@ -1624,8 +1744,8 @@
     hint.classList.remove('is-calculated');
 
     if (result.derivedField === 'total' && result.total !== null && result.pricePerLiter !== null) {
-      hint.textContent = 'Сумма рассчитана: ' +
-        C.formatNumber(result.liters, 2) + ' л × ' +
+      hint.textContent = T('Сумма рассчитана: ') +
+        C.formatNumber(result.liters, 2) + T(' л × ') +
         C.formatAmount(result.pricePerLiter, 2) + ' ₪ = ' +
         C.formatMoney(result.total);
       hint.classList.add('is-calculated');
@@ -1633,19 +1753,19 @@
     }
 
     if (result.derivedField === 'price' && result.total !== null && result.liters) {
-      hint.textContent = 'Цена за литр рассчитана: ' +
-        C.formatMoney(result.total) + ' ÷ ' +
-        C.formatNumber(result.liters, 2) + ' л';
+      hint.textContent = T('Цена за литр рассчитана: ') +
+        C.formatMoney(result.total) + T(' ÷ ') +
+        C.formatNumber(result.liters, 2) + T(' л');
       hint.classList.add('is-calculated');
       return;
     }
 
     if (result.liters === null || result.liters <= 0) {
-      hint.textContent = 'Сначала укажите количество литров — без него пересчёт невозможен.';
+      hint.textContent = T('Сначала укажите количество литров — без него пересчёт невозможен.');
       return;
     }
 
-    hint.textContent = 'Введите литры и одно из полей цены — второе заполнится автоматически.';
+    hint.textContent = T('Введите литры и одно из полей цены — второе заполнится автоматически.');
   }
 
   function bindCalcInput(input, field) {
@@ -1695,21 +1815,29 @@
       clearFieldError(el.fuelType);
       el.formError.textContent = '';
       var previousType = lastSelectedFuelType;
-      lastSelectedFuelType = C.normalizeFuelType(el.fuelType.value);
-      // В старых записях цену не меняем автоматически: пользователь
-      // мог открыть запись только чтобы исправить другую ошибку.
+      var nextType = C.normalizeFuelType(el.fuelType.value);
+      lastSelectedFuelType = nextType;
+      // В старых записях цену не меняем автоматически
       if (editingId) {
         return;
       }
-      // Если цену уже ввели вручную или подтвердили после фото, первое
-      // переключение типа не должно затирать её старой ценой из памяти.
-      var keepConfirmedPrice = !previousType &&
-        fuelPriceTouched &&
-        calcState.pricePerLiter !== null &&
-        el.fuelPrice.value.trim() !== '';
-      if (!keepConfirmedPrice) {
-        applyRememberedFuelPrice();
+      if (!nextType) {
+        el.fuelPrice.value = '';
+        calcState.pricePerLiter = null;
+        calcState.lastPriceField = 'price';
+        fuelPriceTouched = false;
+        fuelPriceAutoFilled = false;
+        clearFieldError(el.fuelPrice);
+        updateCalcHint({
+          liters: calcState.liters,
+          pricePerLiter: null,
+          total: calcState.total,
+          derivedField: null
+        });
+        return;
       }
+      // Всегда подставляем последнюю цену ТОЛЬКО для выбранного вида топлива
+      applyRememberedFuelPrice();
     });
 
     el.fuelCorporate.addEventListener('change', function () {
@@ -1782,7 +1910,7 @@
 
     if (!Ocr) {
       setOcrBusy(true);
-      setOcrStatus('Распознавание недоступно. Введите данные вручную.', 'error');
+      setOcrStatus(T('Распознавание недоступно. Введите данные вручную.'), 'error');
       return;
     }
 
@@ -1807,7 +1935,7 @@
 
     el.ocrPreviewRemove.addEventListener('click', function () {
       resetOcrPreview();
-      showToast('Фото убрано. Можно выбрать другое или заполнить форму вручную.');
+      showToast(T('Фото убрано. Можно выбрать другое или заполнить форму вручную.'));
     });
 
     el.ocrReviewClose.addEventListener('click', function () {
@@ -1846,7 +1974,7 @@
     if (!el.ocrStatus) {
       return;
     }
-    el.ocrStatus.textContent = message;
+    el.ocrStatus.textContent = T(message);
     el.ocrStatus.classList.toggle('is-working', tone === 'working');
     el.ocrStatus.classList.toggle('is-error', tone === 'error');
   }
@@ -1876,10 +2004,7 @@
 
     setOcrProgress(percent);
 
-    var label = OCR_STAGE_LABELS[status];
-    if (!label) {
-      label = 'Распознаём фото…';
-    }
+    var label = T(OCR_STAGE_LABELS[status] || 'Распознаём фото…');
     if (status === 'recognizing text') {
       label += ' ' + Math.round(stageProgress * 100) + '%';
     }
@@ -1892,7 +2017,7 @@
     }
     ocrObjectUrl = URL.createObjectURL(file);
     el.ocrPreviewImage.src = ocrObjectUrl;
-    el.ocrFileName.textContent = file.name || 'Фото';
+    el.ocrFileName.textContent = file.name || T('Фото');
     el.ocrPreview.hidden = false;
   }
 
@@ -1969,8 +2094,8 @@
         parsed.total !== null;
 
       if (!hasAnyValue) {
-        setOcrStatus('Не удалось найти числа на фото. Сфотографируйте ближе, ровнее или введите данные вручную.', 'error');
-        showToast('Распознать числа не удалось. Ручной ввод ниже.', 'error');
+        setOcrStatus(T('Не удалось найти числа на фото. Сфотографируйте ближе, ровнее или введите данные вручную.'), 'error');
+        showToast(T('Распознать числа не удалось. Ручной ввод ниже.'), 'error');
         return;
       }
 
@@ -1984,21 +2109,21 @@
   function ocrErrorMessage(error) {
     var code = error && error.code;
     if (code === 'too_large') {
-      return 'Фото больше 20 МБ. Выберите файл поменьше.';
+      return T('Фото больше 20 МБ. Выберите файл поменьше.');
     }
     if (code === 'not_image') {
-      return 'Это не изображение. Выберите фото чека или табло.';
+      return T('Это не изображение. Выберите фото чека или табло.');
     }
     if (code === 'unsupported_image') {
-      return 'Формат HEIC пока не поддерживается. Сделайте обычное фото в JPEG.';
+      return T('Формат HEIC пока не поддерживается. Сделайте обычное фото в JPEG.');
     }
     if (code === 'ocr_unavailable') {
-      return 'Локальный движок распознавания не загрузился. Введите данные вручную.';
+      return T('Локальный движок распознавания не загрузился. Введите данные вручную.');
     }
     if (code === 'image_error' || code === 'canvas_error') {
-      return 'Не удалось открыть фото. Попробуйте другой файл или введите данные вручную.';
+      return T('Не удалось открыть фото. Попробуйте другой файл или введите данные вручную.');
     }
-    return 'Не удалось распознать фото. Введите данные вручную — форма доступна.';
+    return T('Не удалось распознать фото. Введите данные вручную — форма доступна.');
   }
 
   function handleOcrError(error, token) {
@@ -2008,7 +2133,7 @@
     setOcrBusy(false);
     setOcrProgress(null);
     setOcrStatus(ocrErrorMessage(error), 'error');
-    showToast('Распознавание не удалось. Можно ввести данные вручную.', 'error');
+    showToast(T('Распознавание не удалось. Можно ввести данные вручную.'), 'error');
   }
 
   function openOcrReview(result) {
@@ -2028,11 +2153,11 @@
     el.ocrReviewLiters.value = parsed.liters === null ? '' : C.formatAmount(parsed.liters, 2);
     el.ocrReviewPrice.value = parsed.pricePerLiter === null ? '' : C.formatAmount(parsed.pricePerLiter, 2);
     el.ocrReviewTotal.value = parsed.total === null ? '' : C.formatAmount(parsed.total, 2);
-    el.ocrReviewConfidence.textContent = label + ' · проверьте числа';
+    el.ocrReviewConfidence.textContent = T(label) + T(' · проверьте числа');
     el.ocrReviewConfidence.className = 'ocr-review-badge' + (tone ? ' ' + tone : '');
     el.ocrRawText.textContent = result.text && result.text.trim()
       ? result.text.trim()
-      : 'Текст не распознан.';
+      : T('Текст не распознан.');
     el.ocrReviewImage.src = ocrObjectUrl || '';
     el.ocrReviewImage.hidden = !ocrObjectUrl;
     el.ocrReviewError.textContent = '';
@@ -2083,7 +2208,7 @@
 
     if (focusTarget === 'manual') {
       el.fuelLiters.focus();
-      showToast('Заполните форму вручную и нажмите «Сохранить заправку».');
+      showToast(T('Заполните форму вручную и нажмите «Сохранить заправку».'));
     } else if (focusTarget === 'scan') {
       if (Focus && Focus.restoreFocus) {
         Focus.restoreFocus(opener, function () {
@@ -2115,12 +2240,12 @@
     }
 
     if (liters === null || liters <= 0) {
-      el.ocrReviewError.textContent = 'Укажите количество литров больше нуля.';
+      el.ocrReviewError.textContent = T('Укажите количество литров больше нуля.');
       el.ocrReviewLiters.focus();
       return;
     }
     if (price === null && total === null) {
-      el.ocrReviewError.textContent = 'Нужна цена за литр или общая сумма.';
+      el.ocrReviewError.textContent = T('Нужна цена за литр или общая сумма.');
       el.ocrReviewPrice.focus();
       return;
     }
@@ -2152,7 +2277,7 @@
       !Number.isFinite(result.pricePerLiter) ||
       !Number.isFinite(result.total)
     ) {
-      el.ocrReviewError.textContent = 'Не удалось рассчитать стоимость. Проверьте литры и цену.';
+      el.ocrReviewError.textContent = T('Не удалось рассчитать стоимость. Проверьте литры и цену.');
       return;
     }
 
@@ -2174,8 +2299,8 @@
     el.formError.textContent = '';
     updateCalcHint(result);
     closeOcrReview(null);
-    setOcrStatus('Данные перенесены в форму. Проверьте их и нажмите «Сохранить заправку».', '');
-    showToast('Числа перенесены. Проверьте и нажмите «Сохранить заправку».');
+    setOcrStatus(T('Данные перенесены в форму. Проверьте их и нажмите «Сохранить заправку».'), '');
+    showToast(T('Числа перенесены. Проверьте и нажмите «Сохранить заправку».'));
 
     window.setTimeout(function () {
       el.fuelLiters.focus();
@@ -2202,10 +2327,10 @@
     var fuelType = C.normalizeFuelType(el.fuelType.value);
 
     if (!date || !C.isValidDateString(date)) {
-      return formError('Укажите дату заправки.', el.fuelDate);
+      return formError(T('Укажите дату заправки.'), el.fuelDate);
     }
     if (date > todayIso()) {
-      return formError('Дата не может быть в будущем.', el.fuelDate);
+      return formError(T('Дата не может быть в будущем.'), el.fuelDate);
     }
 
     var existing = editingId ? findFueling(editingId) : null;
@@ -2219,14 +2344,14 @@
         return formError(odometerCheck.message, el.fuelOdometer);
       }
     } else if (odometer === null || odometer <= 0) {
-      return formError('Введите пробег одометра больше нуля.', el.fuelOdometer);
+      return formError(T('Введите пробег одометра больше нуля.'), el.fuelOdometer);
     }
 
     if (!fuelType && (!existing || C.normalizeFuelType(existing.fuelType))) {
-      return formError('Выберите тип топлива: солярку или бензин АИ-95.', el.fuelType);
+      return formError(T('Выберите тип топлива: солярку или бензин АИ-95.'), el.fuelType);
     }
     if (liters === null || liters <= 0) {
-      return formError('Введите количество литров больше нуля.', el.fuelLiters);
+      return formError(T('Введите количество литров больше нуля.'), el.fuelLiters);
     }
 
     var result = C.recalculate({
@@ -2237,12 +2362,12 @@
     });
 
     if (result.pricePerLiter === null && result.total === null) {
-      return formError('Укажите цену за литр или общую сумму.', el.fuelPrice);
+      return formError(T('Укажите цену за литр или общую сумму.'), el.fuelPrice);
     }
 
     // На всякий случай ещё раз проверяем, что после пересчёта нет NaN/Infinity.
     if (!Number.isFinite(result.pricePerLiter) || !Number.isFinite(result.total)) {
-      return formError('Не удалось рассчитать стоимость. Проверьте литры и цену.', el.fuelTotal);
+      return formError(T('Не удалось рассчитать стоимость. Проверьте литры и цену.'), el.fuelTotal);
     }
 
     var stationId = el.fuelStation.value;
@@ -2291,7 +2416,7 @@
         }
       }
       if (index === -1) {
-        showToast('Заправка не найдена. Обновите список.', 'error');
+        showToast(T('Заправка не найдена. Обновите список.'), 'error');
         return;
       }
       nextFuelings[index] = record;
@@ -2310,13 +2435,13 @@
       );
     }
 
-    if (!commitState(next, existing ? 'Изменения не сохранены' : 'Заправка не сохранена')) {
+    if (!commitState(next, existing ? T('Изменения не сохранены') : T('Заправка не сохранена'))) {
       return;
     }
     renderAll();
     showScreen('history');
     closeForm();
-    showToast(existing ? 'Заправка изменена' : 'Заправка сохранена');
+    showToast(existing ? T('Заправка изменена') : T('Заправка сохранена'));
   }
 
   /* ── Обслуживание: форма ───────────────────────────────── */
@@ -2383,16 +2508,17 @@
     if (editingMaintenanceId) {
       record = findMaintenance(editingMaintenanceId);
       if (!record) {
-        showToast('Запись обслуживания не найдена.', 'error');
+        showToast(T('Запись обслуживания не найдена.'), 'error');
         editingMaintenanceId = null;
         return;
       }
     }
 
     clearMaintenanceFormErrors();
+    maintenanceDraftAttachments = cloneAttachments(record ? record.attachments : []);
 
     if (record) {
-      el.maintenanceSheetTitle.textContent = 'Изменить запись';
+      el.maintenanceSheetTitle.textContent = T('Изменить запись');
       el.maintenanceDeleteBtn.hidden = false;
       el.maintenanceDate.value = record.date;
       el.maintenanceOdometer.value = C.formatNumber(record.odometer, 0);
@@ -2402,7 +2528,7 @@
       el.maintenanceNote.value = record.note || '';
     } else {
       var odometer = latestKnownOdometer();
-      el.maintenanceSheetTitle.textContent = 'Новая запись';
+      el.maintenanceSheetTitle.textContent = T('Новая запись');
       el.maintenanceDeleteBtn.hidden = true;
       el.maintenanceDate.value = todayIso();
       el.maintenanceOdometer.value = odometer !== null ? String(Math.round(odometer)) : '';
@@ -2413,6 +2539,7 @@
     }
 
     updateMaintenanceTotalPreview();
+    renderMaintenanceAttachments();
     el.maintenanceForm.scrollTop = 0;
     if (el.maintenanceSheet.querySelector('.fuel-form')) {
       el.maintenanceSheet.querySelector('.fuel-form').scrollTop = 0;
@@ -2443,6 +2570,7 @@
     var opener = maintenanceFormOpener;
     maintenanceFormOpener = null;
     editingMaintenanceId = null;
+    maintenanceDraftAttachments = [];
     clearMaintenanceFormErrors();
 
     if (Focus && Focus.closeDialog) {
@@ -2473,22 +2601,22 @@
     var labor = parseCostInput(el.maintenanceLabor);
 
     if (!date || !C.isValidDateString(date)) {
-      return maintenanceFormError('Укажите дату обслуживания.', el.maintenanceDate);
+      return maintenanceFormError(T('Укажите дату обслуживания.'), el.maintenanceDate);
     }
     if (date > todayIso()) {
-      return maintenanceFormError('Дата не может быть в будущем.', el.maintenanceDate);
+      return maintenanceFormError(T('Дата не может быть в будущем.'), el.maintenanceDate);
     }
     if (odometer === null || odometer <= 0) {
-      return maintenanceFormError('Введите пробег больше нуля.', el.maintenanceOdometer);
+      return maintenanceFormError(T('Введите пробег больше нуля.'), el.maintenanceOdometer);
     }
     if (!title) {
-      return maintenanceFormError('Укажите работу или событие.', el.maintenanceTitle);
+      return maintenanceFormError(T('Укажите работу или событие.'), el.maintenanceTitle);
     }
     if (parts === null) {
-      return maintenanceFormError('Стоимость запчастей должна быть числом.', el.maintenanceParts);
+      return maintenanceFormError(T('Стоимость запчастей должна быть числом.'), el.maintenanceParts);
     }
     if (labor === null) {
-      return maintenanceFormError('Стоимость работ должна быть числом.', el.maintenanceLabor);
+      return maintenanceFormError(T('Стоимость работ должна быть числом.'), el.maintenanceLabor);
     }
 
     var existing = editingMaintenanceId ? findMaintenance(editingMaintenanceId) : null;
@@ -2500,6 +2628,7 @@
       partsCost: parts,
       laborCost: labor,
       note: el.maintenanceNote.value.trim().slice(0, 500),
+      attachments: cloneAttachments(maintenanceDraftAttachments),
       createdAt: existing ? existing.createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -2520,7 +2649,7 @@
         }
       }
       if (index === -1) {
-        showToast('Запись обслуживания не найдена. Обновите список.', 'error');
+        showToast(T('Запись обслуживания не найдена. Обновите список.'), 'error');
         return;
       }
       nextRecords[index] = record;
@@ -2529,13 +2658,13 @@
     }
     nextProfile.updatedAt = new Date().toISOString();
 
-    if (!commitState(next, existing ? 'Изменения не сохранены' : 'Запись не сохранена')) {
+    if (!commitState(next, existing ? T('Изменения не сохранены') : T('Запись не сохранена'))) {
       return;
     }
     renderAll();
     showScreen('maintenance');
     closeMaintenanceForm();
-    showToast(existing ? 'Запись изменена' : 'Запись добавлена');
+    showToast(existing ? T('Запись изменена') : T('Запись добавлена'));
   }
 
   function bindMaintenanceForm() {
@@ -2578,6 +2707,412 @@
     });
   }
 
+  function cloneAttachments(list) {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    return list.filter(function (item) {
+      return item && typeof item === 'object' && typeof item.dataUrl === 'string' && item.dataUrl;
+    }).slice(0, MAX_ATTACHMENTS).map(function (item) {
+      return {
+        id: item.id || S.makeId(),
+        name: item.name || 'photo',
+        mime: item.mime || 'image/jpeg',
+        size: Number.isFinite(item.size) ? item.size : 0,
+        purpose: ATTACHMENT_PURPOSES.indexOf(item.purpose) !== -1 ? item.purpose : 'other',
+        dataUrl: item.dataUrl,
+        createdAt: item.createdAt || new Date().toISOString()
+      };
+    });
+  }
+
+  function attachmentPurposeLabel(purpose) {
+    if (purpose === 'receipt') {
+      return T('Чек');
+    }
+    if (purpose === 'invoice') {
+      return T('Счёт');
+    }
+    if (purpose === 'warranty') {
+      return T('Гарантия');
+    }
+    if (purpose === 'photo') {
+      return T('Фото');
+    }
+    return T('Другое');
+  }
+
+  function formatAttachmentDate(iso) {
+    var date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    try {
+      return new Intl.DateTimeFormat(appLocale(), {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      }).format(date);
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function attachmentMetaText(attachment) {
+    var parts = [attachmentPurposeLabel(attachment.purpose), formatBytes(attachment.size)];
+    var date = formatAttachmentDate(attachment.createdAt);
+    if (date) {
+      parts.push(date);
+    }
+    return parts.join(' · ');
+  }
+
+  function attachmentPreviewHtml(record) {
+    var list = Array.isArray(record && record.attachments) ? record.attachments : [];
+    if (!list.length) {
+      return '';
+    }
+    var visible = list.slice(0, 3);
+    var more = list.length - visible.length;
+    return '<div class="record-attachments">' +
+      visible.map(function (item) {
+        return '<button class="record-attachment" type="button"' +
+          ' data-attachment-record="' + escapeHtml(record.id) + '"' +
+          ' data-attachment-id="' + escapeHtml(item.id) + '"' +
+          ' aria-label="' + escapeHtml(T('Открыть вложение') + ': ' + attachmentPurposeLabel(item.purpose)) + '">' +
+          '<img src="' + escapeHtml(item.dataUrl) + '" alt="">' +
+          '<span>' + escapeHtml(attachmentPurposeLabel(item.purpose)) + '</span>' +
+        '</button>';
+      }).join('') +
+      (more > 0 ? '<span class="record-attachments-more">+' + more + '</span>' : '') +
+    '</div>';
+  }
+
+  function renderMaintenanceAttachments() {
+    if (!el.maintenanceAttachments) {
+      return;
+    }
+    var count = maintenanceDraftAttachments.length;
+    if (el.maintenanceAttachmentsCount) {
+      el.maintenanceAttachmentsCount.textContent = count + ' / ' + MAX_ATTACHMENTS;
+    }
+    if (el.maintenanceAttachmentsHint) {
+      el.maintenanceAttachmentsHint.textContent = attachmentInputBusy
+        ? T('Обрабатываем фото…')
+        : T('До 5 файлов, каждый до 12 МБ. После сжатия файл хранится только на этом устройстве.');
+    }
+    if (el.maintenanceCameraBtn) {
+      el.maintenanceCameraBtn.disabled = attachmentInputBusy || count >= MAX_ATTACHMENTS;
+    }
+    if (el.maintenanceGalleryBtn) {
+      el.maintenanceGalleryBtn.disabled = attachmentInputBusy || count >= MAX_ATTACHMENTS;
+    }
+
+    el.maintenanceAttachments.innerHTML = maintenanceDraftAttachments.map(function (item) {
+      var options = ATTACHMENT_PURPOSES.map(function (purpose) {
+        return '<option value="' + purpose + '"' +
+          (purpose === item.purpose ? ' selected' : '') + '>' +
+          escapeHtml(attachmentPurposeLabel(purpose)) + '</option>';
+      }).join('');
+      return '<div class="attachment-item" data-attachment-item="' + escapeHtml(item.id) + '">' +
+        '<button class="attachment-thumb" type="button" data-draft-attachment-view="' + escapeHtml(item.id) + '"' +
+          ' aria-label="' + escapeHtml(T('Просмотр фото') + ': ' + attachmentPurposeLabel(item.purpose)) + '">' +
+          '<img src="' + escapeHtml(item.dataUrl) + '" alt="">' +
+        '</button>' +
+        '<div class="attachment-details">' +
+          '<strong>' + escapeHtml(attachmentPurposeLabel(item.purpose)) + '</strong>' +
+          '<span dir="auto" data-i18n-ignore>' + escapeHtml(item.name || T('Фото')) + '</span>' +
+          '<small>' + escapeHtml(formatBytes(item.size)) + '</small>' +
+        '</div>' +
+        '<label class="attachment-purpose">' +
+          '<span class="visually-hidden">' + escapeHtml(T('Назначение')) + '</span>' +
+          '<select data-attachment-purpose="' + escapeHtml(item.id) + '" aria-label="' + escapeHtml(T('Назначение')) + '">' +
+            options +
+          '</select>' +
+        '</label>' +
+        '<button class="mini-btn mini-danger" type="button" data-attachment-remove="' + escapeHtml(item.id) + '"' +
+          ' aria-label="' + escapeHtml(T('Удалить вложение')) + '">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg>' +
+        '</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  function readImageFile(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        resolve(String(reader.result || ''));
+      };
+      reader.onerror = function () {
+        reject(new Error('read'));
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadImage(dataUrl) {
+    return new Promise(function (resolve, reject) {
+      var image = new Image();
+      image.onload = function () { resolve(image); };
+      image.onerror = function () { reject(new Error('image')); };
+      image.src = dataUrl;
+    });
+  }
+
+  function compressAttachment(file) {
+    return readImageFile(file).then(function (dataUrl) {
+      return loadImage(dataUrl).then(function (image) {
+        var width = image.naturalWidth || image.width;
+        var height = image.naturalHeight || image.height;
+        if (!width || !height) {
+          throw new Error('image');
+        }
+        var scale = Math.min(1, MAX_ATTACHMENT_SIDE / Math.max(width, height));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        var context = canvas.getContext('2d');
+        if (!context) {
+          throw new Error('canvas');
+        }
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        var compressed = canvas.toDataURL('image/jpeg', 0.86);
+        if (!compressed || compressed.indexOf('data:image/jpeg;base64,') !== 0) {
+          throw new Error('canvas');
+        }
+        var base64 = compressed.split(',')[1] || '';
+        return {
+          id: S.makeId(),
+          name: (file.name || 'photo').slice(0, 120),
+          mime: 'image/jpeg',
+          size: Math.round((base64.length * 3) / 4),
+          purpose: 'photo',
+          dataUrl: compressed,
+          createdAt: new Date().toISOString()
+        };
+      });
+    });
+  }
+
+  function handleAttachmentFiles(fileList) {
+    if (attachmentInputBusy) {
+      return;
+    }
+    var files = Array.prototype.slice.call(fileList || []).filter(Boolean);
+    if (!files.length) {
+      return;
+    }
+    var remaining = MAX_ATTACHMENTS - maintenanceDraftAttachments.length;
+    if (remaining <= 0) {
+      showToast(T('Можно добавить не больше 5 файлов.'), 'error');
+      return;
+    }
+    if (files.length > remaining) {
+      showToast(T('Можно добавить не больше 5 файлов.'), 'error');
+      files = files.slice(0, remaining);
+    }
+
+    var valid = [];
+    files.forEach(function (file) {
+      if (file.size > MAX_ATTACHMENT_INPUT_BYTES) {
+        showToast(T('Файл больше 12 МБ. Выберите файл поменьше.'), 'error');
+        return;
+      }
+      var type = (file.type || '').toLowerCase();
+      if (type === 'image/heic' || type === 'image/heif') {
+        showToast(T('Формат HEIC пока не поддерживается. Сделайте обычное фото в JPEG.'), 'error');
+        return;
+      }
+      if (type && type.indexOf('image/') !== 0) {
+        showToast(T('Это не изображение. Выберите фото чека или табло.'), 'error');
+        return;
+      }
+      valid.push(file);
+    });
+
+    if (!valid.length) {
+      return;
+    }
+
+    attachmentInputBusy = true;
+    renderMaintenanceAttachments();
+    var added = 0;
+    var chain = Promise.resolve();
+    valid.forEach(function (file) {
+      chain = chain.then(function () {
+        return compressAttachment(file).then(function (attachment) {
+          maintenanceDraftAttachments.push(attachment);
+          added += 1;
+          renderMaintenanceAttachments();
+        }).catch(function () {
+          showToast(T('Не удалось добавить фото. Попробуйте другой файл.'), 'error');
+        });
+      });
+    });
+    chain.then(function () {
+      attachmentInputBusy = false;
+      renderMaintenanceAttachments();
+      if (added > 0) {
+        showToast(T('Добавлено: ') + countLabel(added, 'file'));
+      }
+    }, function () {
+      attachmentInputBusy = false;
+      renderMaintenanceAttachments();
+    });
+  }
+
+  function findDraftAttachment(id) {
+    for (var index = 0; index < maintenanceDraftAttachments.length; index += 1) {
+      if (maintenanceDraftAttachments[index].id === id) {
+        return maintenanceDraftAttachments[index];
+      }
+    }
+    return null;
+  }
+
+  function removeDraftAttachment(id) {
+    maintenanceDraftAttachments = maintenanceDraftAttachments.filter(function (item) {
+      return item.id !== id;
+    });
+    renderMaintenanceAttachments();
+  }
+
+  function bindMaintenanceAttachments() {
+    if (!el.maintenanceAttachments) {
+      return;
+    }
+
+    el.maintenanceCameraBtn.addEventListener('click', function () {
+      el.maintenanceCameraInput.click();
+    });
+    el.maintenanceGalleryBtn.addEventListener('click', function () {
+      el.maintenanceGalleryInput.click();
+    });
+
+    [el.maintenanceCameraInput, el.maintenanceGalleryInput].forEach(function (input) {
+      input.addEventListener('change', function () {
+        handleAttachmentFiles(input.files);
+        input.value = '';
+      });
+    });
+
+    el.maintenanceAttachments.addEventListener('click', function (event) {
+      var removeButton = event.target.closest('[data-attachment-remove]');
+      if (removeButton) {
+        removeDraftAttachment(removeButton.getAttribute('data-attachment-remove'));
+        return;
+      }
+      var viewButton = event.target.closest('[data-draft-attachment-view]');
+      if (viewButton) {
+        var attachment = findDraftAttachment(viewButton.getAttribute('data-draft-attachment-view'));
+        if (attachment) {
+          openAttachmentViewer(attachment, viewButton);
+        }
+      }
+    });
+
+    el.maintenanceAttachments.addEventListener('change', function (event) {
+      var select = event.target.closest('[data-attachment-purpose]');
+      if (!select) {
+        return;
+      }
+      var attachment = findDraftAttachment(select.getAttribute('data-attachment-purpose'));
+      if (attachment && ATTACHMENT_PURPOSES.indexOf(select.value) !== -1) {
+        attachment.purpose = select.value;
+        renderMaintenanceAttachments();
+      }
+    });
+  }
+
+  function findRecordAttachment(recordId, attachmentId) {
+    var record = findMaintenance(recordId);
+    if (!record || !Array.isArray(record.attachments)) {
+      return null;
+    }
+    for (var index = 0; index < record.attachments.length; index += 1) {
+      if (record.attachments[index].id === attachmentId) {
+        return record.attachments[index];
+      }
+    }
+    return null;
+  }
+
+  function openAttachmentViewer(attachment, opener) {
+    if (!attachment || !el.attachmentViewer) {
+      return;
+    }
+    attachmentViewerOpener = opener || document.activeElement;
+    el.attachmentViewerTitle.textContent = T('Просмотр фото');
+    el.attachmentViewerImage.src = attachment.dataUrl;
+    el.attachmentViewerImage.alt = T('Вложение') + ': ' + attachmentPurposeLabel(attachment.purpose);
+    el.attachmentViewerMeta.textContent = attachmentMetaText(attachment);
+    el.attachmentViewer.hidden = false;
+
+    if (Focus && Focus.openDialog) {
+      Focus.openDialog(el.attachmentViewer, {
+        opener: attachmentViewerOpener,
+        initialFocus: el.attachmentViewerClose,
+        fallback: function () {
+          return attachmentViewerOpener || el.maintenanceGalleryBtn || el.historyList;
+        }
+      });
+    } else {
+      document.body.classList.add('modal-open');
+      el.attachmentViewerClose.focus();
+    }
+  }
+
+  function closeAttachmentViewer() {
+    if (!el.attachmentViewer || el.attachmentViewer.hidden) {
+      return;
+    }
+    if (document.activeElement && el.attachmentViewer.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    if (Focus && Focus.closeDialog) {
+      Focus.closeDialog(el.attachmentViewer);
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+    el.attachmentViewer.hidden = true;
+    el.attachmentViewerImage.removeAttribute('src');
+    el.attachmentViewerMeta.textContent = '';
+    attachmentViewerOpener = null;
+  }
+
+  function bindAttachmentViewer() {
+    if (!el.attachmentViewer) {
+      return;
+    }
+    el.attachmentViewerClose.addEventListener('click', closeAttachmentViewer);
+    el.attachmentViewer.addEventListener('click', function (event) {
+      if (event.target === el.attachmentViewer) {
+        closeAttachmentViewer();
+      }
+    });
+  }
+
+  function bindLanguage() {
+    if (!el.languageSelect || !I18n) {
+      return;
+    }
+    el.languageSelect.value = I18n.getLang();
+    el.languageSelect.addEventListener('change', function () {
+      I18n.setLang(el.languageSelect.value);
+    });
+    document.addEventListener('murano:languagechange', function () {
+      if (el.languageSelect) {
+        el.languageSelect.value = I18n.getLang();
+      }
+      applyTheme();
+      renderAll();
+      showScreen(currentScreen);
+    });
+  }
+
   function formError(message, input) {
     el.formError.textContent = message;
     if (input) {
@@ -2612,12 +3147,12 @@
       return;
     }
     var description = formatDate(record.date) + ' · ' + C.formatMoney(record.total) +
-      (record.station ? ' · ' + record.station : '');
+      (record.station ? ' · ' + stationDisplayName(record) : '');
 
     askConfirm({
-      title: 'Удалить заправку?',
-      message: description + '. Это действие нельзя отменить.',
-      confirmLabel: 'Удалить',
+      title: T('Удалить заправку?'),
+      message: description + '. ' + T('Это действие нельзя отменить.'),
+      confirmLabel: T('Удалить'),
       focusFallback: function () {
         return findVisibleControl('data-edit', id) ||
           findVisibleControl('data-action', 'add') ||
@@ -2632,14 +3167,14 @@
       nextProfile.fuelings = nextProfile.fuelings.filter(function (item) { return item.id !== id; });
       nextProfile.updatedAt = new Date().toISOString();
 
-      if (!commitState(next, 'Заправка не удалена')) {
+      if (!commitState(next, T('Заправка не удалена'))) {
         return;
       }
       renderAll();
       if (fromSheet) {
         closeForm();
       }
-      showToast('Заправка удалена');
+      showToast(T('Заправка удалена'));
     });
   }
 
@@ -2652,9 +3187,9 @@
       ' · ' + C.formatMoney(C.maintenanceTotal(record));
 
     askConfirm({
-      title: 'Удалить запись обслуживания?',
-      message: description + '. Это действие нельзя отменить.',
-      confirmLabel: 'Удалить',
+      title: T('Удалить запись обслуживания?'),
+      message: description + '. ' + T('Это действие нельзя отменить.'),
+      confirmLabel: T('Удалить'),
       focusFallback: function () {
         return findVisibleControl('data-maintenance-edit', id) ||
           findVisibleControl('data-action', 'add-maintenance') ||
@@ -2671,14 +3206,14 @@
       });
       nextProfile.updatedAt = new Date().toISOString();
 
-      if (!commitState(next, 'Запись не удалена')) {
+      if (!commitState(next, T('Запись не удалена'))) {
         return;
       }
       renderAll();
       if (fromSheet) {
         closeMaintenanceForm();
       }
-      showToast('Запись обслуживания удалена');
+      showToast(T('Запись обслуживания удалена'));
     });
   }
 
@@ -2698,7 +3233,7 @@
   function renderProfiles() {
     var profile = activeProfile();
     if (el.activeProfileName) {
-      el.activeProfileName.textContent = profile.name;
+      el.activeProfileName.textContent = displayProfileName(profile.name);
     }
     if (!el.profilesList) {
       return;
@@ -2720,19 +3255,20 @@
             (active ? ' aria-current="true"' : '') + '>' +
             '<span class="profile-avatar" aria-hidden="true">' + escapeHtml(profileInitials(item.name)) + '</span>' +
             '<span class="profile-row-text">' +
-              '<strong>' + escapeHtml(item.name) + '</strong>' +
-              '<small>' + count + ' ' + plural(count, 'запись', 'записи', 'записей') + '</small>' +
+              '<strong data-i18n-ignore>' + escapeHtml(displayProfileName(item.name)) + '</strong>' +
+              '<small>' + countLabel(count, 'record') + '</small>' +
             '</span>' +
             check +
           '</button>' +
           (canDelete
-            ? '<button class="profile-delete" type="button" data-profile-delete="' + escapeHtml(item.id) + '" aria-label="Удалить автомобиль ' + escapeHtml(item.name) + '">' +
+            ? '<button class="profile-delete" type="button" data-profile-delete="' + escapeHtml(item.id) + '" aria-label="' + escapeHtml(T('Удалить автомобиль') + ' ' + displayProfileName(item.name)) + '">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg>' +
               '</button>'
             : '') +
         '</div>'
       );
     }).join('');
+    applyTranslations();
   }
 
   function resetProfileForm(focusAddButton) {
@@ -2767,7 +3303,15 @@
 
   function closeProfiles() {
     if (Focus && Focus.closeDialog) {
-      Focus.closeDialog(el.profilesModal);
+      Focus.closeDialog(el.profilesModal, {
+        fallback: function () {
+          if (el.carSwitch && el.carSwitch.isConnected) {
+            return el.carSwitch;
+          }
+          return null;
+        },
+        deferRestore: true
+      });
     } else {
       document.body.classList.remove('modal-open');
     }
@@ -2798,11 +3342,11 @@
     if (state.activeProfileId !== id) {
       var next = cloneState(state);
       next.activeProfileId = id;
-      if (!commitState(next, 'Не удалось переключить автомобиль')) {
+      if (!commitState(next, T('Не удалось переключить автомобиль'))) {
         return;
       }
       renderAll();
-      showToast('Автомобиль: ' + profile.name);
+      showToast(T('Автомобиль: ') + displayProfileName(profile.name));
     }
     closeProfiles();
   }
@@ -2826,11 +3370,11 @@
     var fuelingsCount = Array.isArray(profile.fuelings) ? profile.fuelings.length : 0;
     var maintenancesCount = Array.isArray(profile.maintenances) ? profile.maintenances.length : 0;
     askConfirm({
-      title: 'Удалить автомобиль?',
-      message: 'Профиль «' + profile.name + '», его заправки (' + fuelingsCount +
-        ') и обслуживание (' + maintenancesCount +
-        ') будут удалены. Это действие нельзя отменить.',
-      confirmLabel: 'Удалить',
+      title: T('Удалить автомобиль?'),
+      message: T('Профиль «') + displayProfileName(profile.name) + T('», его заправки (') +
+        fuelingsCount + T(') и обслуживание (') + maintenancesCount +
+        T(') будут удалены. Это действие нельзя отменить.'),
+      confirmLabel: T('Удалить'),
       focusFallback: function () {
         return findFirstVisible('[data-profile-switch]', el.profilesList) ||
           el.profileAddBtn ||
@@ -2849,11 +3393,11 @@
         next.activeProfileId = next.profiles[0].id;
       }
 
-      if (!commitState(next, 'Автомобиль не удалён')) {
+      if (!commitState(next, T('Автомобиль не удалён'))) {
         return;
       }
       renderAll();
-      showToast('Автомобиль удалён');
+      showToast(T('Автомобиль удалён'));
     });
   }
 
@@ -2901,7 +3445,7 @@
 
       var name = el.profileName.value.trim();
       if (!name) {
-        el.profileError.textContent = 'Введите название автомобиля.';
+        el.profileError.textContent = T('Введите название автомобиля.');
         el.profileName.focus();
         return;
       }
@@ -2909,7 +3453,7 @@
       var raw = el.profileOdometer.value.trim();
       var odometer = raw === '' ? null : C.parseNumber(raw);
       if (raw !== '' && (odometer === null || odometer < 0)) {
-        el.profileError.textContent = 'Введите пробег числом, например 85000.';
+        el.profileError.textContent = T('Введите пробег числом, например 85000.');
         el.profileOdometer.focus();
         return;
       }
@@ -2919,12 +3463,12 @@
       next.profiles.push(profile);
       next.activeProfileId = profile.id;
 
-      if (!commitState(next, 'Автомобиль не добавлен')) {
+      if (!commitState(next, T('Автомобиль не добавлен'))) {
         return;
       }
       renderAll();
       closeProfiles();
-      showToast('Автомобиль добавлен');
+      showToast(T('Автомобиль добавлен'));
     });
   }
 
@@ -2942,9 +3486,9 @@
 
   function askConfirm(options) {
     var settings = options || {};
-    el.confirmTitle.textContent = settings.title || 'Подтвердите действие';
+    el.confirmTitle.textContent = settings.title || T('Подтвердите действие');
     el.confirmText.textContent = settings.message || '';
-    el.confirmOk.textContent = settings.confirmLabel || 'Удалить';
+    el.confirmOk.textContent = settings.confirmLabel || T('Удалить');
     el.confirmModal.hidden = false;
 
     if (Focus && Focus.openDialog) {
@@ -3004,6 +3548,8 @@
         closeForm();
       } else if (top === el.maintenanceSheet) {
         closeMaintenanceForm();
+      } else if (top === el.attachmentViewer) {
+        closeAttachmentViewer();
       }
     });
   }
@@ -3018,6 +3564,7 @@
     renderStatsScreen();
     renderSettings();
     renderProfiles();
+    applyTranslations();
   }
 
   var lastUpdateCheck = 0;
@@ -3060,7 +3607,7 @@
         window.location.reload();
         return;
       }
-      showToast('Доступна новая версия. Перезапустите приложение.');
+      showToast(T('Доступна новая версия. Перезапустите приложение.'));
     });
 
     window.addEventListener('load', function () {

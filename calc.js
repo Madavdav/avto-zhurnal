@@ -30,6 +30,14 @@
 
   var EPSILON = 1e-8;
 
+  function tr(text, params) {
+    return global.MuranoI18n ? global.MuranoI18n.t(text, params) : text;
+  }
+
+  function numberLocale() {
+    return global.MuranoI18n ? global.MuranoI18n.locale() : 'ru-RU';
+  }
+
   /**
    * Превращает то, что ввёл пользователь, в число.
    * Пустая строка, мусор, минус и бесконечность дают null — так мы не пускаем
@@ -98,7 +106,7 @@
     }
     var digits = typeof maxFractionDigits === 'number' ? maxFractionDigits : 0;
     try {
-      return new Intl.NumberFormat('ru-RU', {
+      return new Intl.NumberFormat(numberLocale(), {
         minimumFractionDigits: 0,
         maximumFractionDigits: digits
       }).format(value);
@@ -114,7 +122,7 @@
     }
     var rounded = roundForDisplay(value, 2);
     try {
-      return new Intl.NumberFormat('ru-RU', {
+      return new Intl.NumberFormat(numberLocale(), {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       }).format(rounded) + '\u00A0₪';
@@ -271,7 +279,7 @@
         ok: false,
         code: 'empty',
         odometer: null,
-        message: 'Введите новый пробег — без него заправку не сохранить.'
+        message: tr('Введите новый пробег — без него заправку не сохранить.')
       };
     }
     if (source.prefilled) {
@@ -279,7 +287,7 @@
         ok: false,
         code: 'prefilled',
         odometer: odometer,
-        message: 'Пробег подставлен из предыдущей заправки автоматически. Введите новое значение.'
+        message: tr('Пробег подставлен из предыдущей заправки автоматически. Введите новое значение.')
       };
     }
     if (previous !== null && Math.round(odometer) === Math.round(previous)) {
@@ -287,8 +295,9 @@
         ok: false,
         code: 'same',
         odometer: odometer,
-        message: 'Пробег совпадает с предыдущей записью (' + formatNumber(previous, 0) +
-          ' км). Возможно, вы забыли его обновить. Введите новый пробег.'
+        message: tr('Пробег совпадает с предыдущей записью ({km} км). Возможно, вы забыли его обновить. Введите новый пробег.', {
+          km: formatNumber(previous, 0)
+        })
       };
     }
     return { ok: true, code: '', odometer: odometer, message: '' };
@@ -860,7 +869,7 @@
         key: key,
         year: date.getFullYear(),
         month: date.getMonth() + 1,
-        label: date.toLocaleDateString('ru-RU', { month: 'short' }),
+        label: date.toLocaleDateString(numberLocale(), { month: 'short' }),
         total: spent
       });
     }

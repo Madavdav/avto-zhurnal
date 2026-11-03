@@ -7,6 +7,14 @@
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
 
+  function tr(text, params) {
+    return global.MuranoI18n ? global.MuranoI18n.t(text, params) : text;
+  }
+
+  function numberLocale() {
+    return global.MuranoI18n ? global.MuranoI18n.locale() : 'ru-RU';
+  }
+
   function readColors() {
     if (!window.getComputedStyle) {
       return {
@@ -48,13 +56,13 @@
       return '';
     }
     if (Math.abs(value) >= 10000) {
-      return Math.round(value / 1000) + 'k';
+      return Math.round(value / 1000) + tr('k');
     }
-    return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: 0 }).format(value);
   }
 
   function numberLabel(value, digits) {
-    return new Intl.NumberFormat('ru-RU', {
+    return new Intl.NumberFormat(numberLocale(), {
       minimumFractionDigits: 0,
       maximumFractionDigits: typeof digits === 'number' ? digits : 1
     }).format(value);
@@ -89,8 +97,8 @@
     var points = (Array.isArray(segments) ? segments : []).slice(-12);
     if (!points.length) {
       container.innerHTML = emptyState(
-        'Пока нет расхода',
-        'Нужны две заправки «до полного»: между ними приложение посчитает расход.'
+        tr('Пока нет расхода'),
+        tr('Нужны две заправки «до полного»: между ними приложение посчитает расход.')
       );
       return;
     }
@@ -136,7 +144,7 @@
       var cy = y(point.consumption);
       var isLast = index === points.length - 1;
       var title = shortDate(point.date) + ': ' + numberLabel(point.consumption, 2) +
-        ' л/100 км · ' + numberLabel(point.distance, 0) + ' км';
+        ' ' + tr('л/100 км · ') + numberLabel(point.distance, 0) + ' ' + tr('км');
       var label = isLast
         ? '<text x="' + cx.toFixed(2) + '" y="' + (cy - 10).toFixed(2) + '" text-anchor="middle" fill="' + COLORS.accent + '" font-size="10" font-weight="600">' +
             escapeHtml(numberLabel(point.consumption, 1)) +
@@ -161,7 +169,7 @@
     );
 
     container.innerHTML =
-      '<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="График расхода топлива по заправкам до полного">' +
+      '<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + escapeHtml(tr('График расхода топлива по заправкам до полного')) + '">' +
         '<defs>' +
           '<linearGradient id="cons-gradient" x1="0" y1="0" x2="0" y2="1">' +
             '<stop offset="0%" stop-color="' + COLORS.accent + '" stop-opacity="0.28"/>' +
@@ -188,8 +196,8 @@
 
     if (!items.length || maxValue <= 0) {
       container.innerHTML = emptyState(
-        'Пока нет расходов',
-        'Добавьте заправки — и здесь появятся столбики по месяцам.'
+        tr('Пока нет расходов'),
+        tr('Добавьте заправки — и здесь появятся столбики по месяцам.')
       );
       return;
     }
@@ -222,7 +230,7 @@
       var yPos = pad.top + innerHeight - barHeight;
       var isLast = index === lastIndex;
       var title = item.label + ' ' + item.year + ': ' +
-        new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.total) + ' ₪';
+        new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.total) + ' ₪';
       var valueLabel = item.total > 0
         ? '<text x="' + (xPos + barWidth / 2).toFixed(2) + '" y="' + (yPos - 5).toFixed(2) + '" text-anchor="middle" fill="' + (isLast ? COLORS.textBright : COLORS.text) + '" font-size="8.5">' +
             escapeHtml(moneyShort(item.total)) +
@@ -244,7 +252,7 @@
     }).join('');
 
     container.innerHTML =
-      '<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Столбчатый график расходов на бензин по месяцам">' +
+      '<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + escapeHtml(tr('Столбчатый график расходов на бензин по месяцам')) + '">' +
         gridLines +
         bars +
         labels +

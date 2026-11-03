@@ -21,8 +21,14 @@
   var LEGACY_SCHEMA_VERSION = 1;
   var DEFAULT_INITIAL_ODOMETER = 130000;
   var DEFAULT_PROFILE_NAME = 'Моя машина';
+  var MAX_ATTACHMENTS = 5;
+  var ATTACHMENT_PURPOSES = ['receipt', 'invoice', 'warranty', 'photo', 'other'];
 
   var lastError = null;
+
+  function tr(text, params) {
+    return global.MuranoI18n ? global.MuranoI18n.t(text, params) : text;
+  }
 
   function makeId() {
     if (global.crypto && typeof global.crypto.randomUUID === 'function') {
@@ -142,47 +148,87 @@
     return { stationId: '', station: text };
   }
 
+  function normalizeAttachments(raw) {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    var result = [];
+    var seen = Object.create(null);
+    for (var index = 0; index < raw.length && result.length < MAX_ATTACHMENTS; index += 1) {
+      var item = raw[index];
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      var dataUrl = typeof item.dataUrl === 'string' ? item.dataUrl : '';
+      if (!/^data:image\/(?:jpeg|jpg|png|webp);base64,[a-z0-9+/=\s]+$/i.test(dataUrl) ||
+          dataUrl.length > 12 * 1024 * 1024) {
+        continue;
+      }
+      var id = typeof item.id === 'string' && item.id ? item.id : makeId();
+      if (seen[id]) {
+        id = makeId();
+      }
+      seen[id] = true;
+      var mimeMatch = /^data:(image\/[a-z0-9.+-]+);base64,/i.exec(dataUrl);
+      var purpose = ATTACHMENT_PURPOSES.indexOf(item.purpose) !== -1 ? item.purpose : 'other';
+      var name = typeof item.name === 'string' ? item.name.trim().slice(0, 120) : '';
+      var size = isFiniteNonNegative(item.size)
+        ? Math.round(item.size)
+        : Math.round((dataUrl.length * 3) / 4);
+      result.push({
+        id: id,
+        name: name || ('photo-' + (result.length + 1)),
+        mime: mimeMatch ? mimeMatch[1].toLowerCase() : 'image/jpeg',
+        size: size,
+        purpose: purpose,
+        dataUrl: dataUrl,
+        createdAt: typeof item.createdAt === 'string' && item.createdAt ? item.createdAt : nowIso()
+      });
+    }
+    return result;
+  }
+
   function normalizeFueling(raw, index, options, seenFuelingIds) {
-    var prefix = 'Запись №' + (index + 1) + ': ';
+    var prefix = tr('Запись №{n}: ', { n: index + 1 });
     var strict = Boolean(options && options.strict);
     if (!raw || typeof raw !== 'object') {
-      throw new Error(prefix + 'ожидался объект.');
+      throw new Error(prefix + tr('ожидался объект.'));
     }
     if (!global.MuranoCalc || !global.MuranoCalc.isValidDateString(raw.date)) {
-      throw new Error(prefix + 'неверная или пустая дата.');
+      throw new Error(prefix + tr('неверная или пустая дата.'));
     }
     if (strict && raw.date > (options.today || todayIso())) {
-      throw new Error(prefix + 'дата не может быть в будущем.');
+      throw new Error(prefix + tr('дата не может быть в будущем.'));
     }
     if (!isFiniteNonNegative(raw.odometer)) {
-      throw new Error(prefix + 'пробег должен быть неотрицательным числом.');
+      throw new Error(prefix + tr('пробег должен быть неотрицательным числом.'));
     }
     if (strict && raw.odometer <= 0) {
-      throw new Error(prefix + 'пробег должен быть больше нуля.');
+      throw new Error(prefix + tr('пробег должен быть больше нуля.'));
     }
     if (!isFiniteNonNegative(raw.liters) || raw.liters <= 0) {
-      throw new Error(prefix + 'количество литров должно быть больше нуля.');
+      throw new Error(prefix + tr('количество литров должно быть больше нуля.'));
     }
     if (strict && raw.pricePerLiter !== undefined && raw.pricePerLiter !== null &&
         !isFiniteNonNegative(raw.pricePerLiter)) {
-      throw new Error(prefix + 'цена за литр должна быть неотрицательным числом.');
+      throw new Error(prefix + tr('цена за литр должна быть неотрицательным числом.'));
     }
     if (strict && raw.total !== undefined && raw.total !== null &&
         !isFiniteNonNegative(raw.total)) {
-      throw new Error(prefix + 'общая сумма должна быть неотрицательным числом.');
+      throw new Error(prefix + tr('общая сумма должна быть неотрицательным числом.'));
     }
 
     var price = isFiniteNonNegative(raw.pricePerLiter) ? raw.pricePerLiter : null;
     var total = isFiniteNonNegative(raw.total) ? raw.total : null;
 
     if (price === null && total === null) {
-      throw new Error(prefix + 'нужна цена за литр или общая сумма.');
+      throw new Error(prefix + tr('нужна цена за литр или общая сумма.'));
     }
     if (strict && price !== null && price <= 0) {
-      throw new Error(prefix + 'цена за литр должна быть больше нуля.');
+      throw new Error(prefix + tr('цена за литр должна быть больше нуля.'));
     }
     if (strict && total !== null && total <= 0) {
-      throw new Error(prefix + 'общая сумма должна быть больше нуля.');
+      throw new Error(prefix + tr('общая сумма должна быть больше нуля.'));
     }
     if (total === null) {
       total = raw.liters * price;
@@ -191,7 +237,7 @@
       price = total / raw.liters;
     }
     if (strict && (!Number.isFinite(price) || !Number.isFinite(total))) {
-      throw new Error(prefix + 'не удалось рассчитать стоимость.');
+      throw new Error(prefix + tr('не удалось рассчитать стоимость.'));
     }
 
     var station = normalizeStation(raw);
@@ -204,7 +250,7 @@
     if (seenFuelingIds) {
       if (seenFuelingIds[id]) {
         if (strict) {
-          throw new Error(prefix + 'повторяющийся ID записи.');
+          throw new Error(prefix + tr('повторяющийся ID записи.'));
         }
         do {
           id = makeId();
@@ -233,36 +279,36 @@
   }
 
   function normalizeMaintenance(raw, index, options, seenMaintenanceIds) {
-    var prefix = 'Обслуживание №' + (index + 1) + ': ';
+    var prefix = tr('Обслуживание №{n}: ', { n: index + 1 });
     var strict = Boolean(options && options.strict);
     if (!raw || typeof raw !== 'object') {
-      throw new Error(prefix + 'ожидался объект.');
+      throw new Error(prefix + tr('ожидался объект.'));
     }
     if (!global.MuranoCalc || !global.MuranoCalc.isValidDateString(raw.date)) {
-      throw new Error(prefix + 'неверная или пустая дата.');
+      throw new Error(prefix + tr('неверная или пустая дата.'));
     }
     if (strict && raw.date > (options.today || todayIso())) {
-      throw new Error(prefix + 'дата не может быть в будущем.');
+      throw new Error(prefix + tr('дата не может быть в будущем.'));
     }
     if (!isFiniteNonNegative(raw.odometer)) {
-      throw new Error(prefix + 'пробег должен быть неотрицательным числом.');
+      throw new Error(prefix + tr('пробег должен быть неотрицательным числом.'));
     }
     if (strict && raw.odometer <= 0) {
-      throw new Error(prefix + 'пробег должен быть больше нуля.');
+      throw new Error(prefix + tr('пробег должен быть больше нуля.'));
     }
 
     var title = typeof raw.title === 'string' ? raw.title.trim().slice(0, 120) : '';
     if (!title) {
-      throw new Error(prefix + 'нужно название работы или события.');
+      throw new Error(prefix + tr('нужно название работы или события.'));
     }
 
     if (strict && raw.partsCost !== undefined && raw.partsCost !== null &&
         !isFiniteNonNegative(raw.partsCost)) {
-      throw new Error(prefix + 'стоимость запчастей должна быть неотрицательным числом.');
+      throw new Error(prefix + tr('стоимость запчастей должна быть неотрицательным числом.'));
     }
     if (strict && raw.laborCost !== undefined && raw.laborCost !== null &&
         !isFiniteNonNegative(raw.laborCost)) {
-      throw new Error(prefix + 'стоимость работ должна быть неотрицательным числом.');
+      throw new Error(prefix + tr('стоимость работ должна быть неотрицательным числом.'));
     }
 
     var note = typeof raw.note === 'string' ? raw.note.trim().slice(0, 500) : '';
@@ -271,7 +317,7 @@
     if (seenMaintenanceIds) {
       if (seenMaintenanceIds[id]) {
         if (strict) {
-          throw new Error(prefix + 'повторяющийся ID записи.');
+          throw new Error(prefix + tr('повторяющийся ID записи.'));
         }
         do {
           id = makeId();
@@ -288,6 +334,7 @@
       partsCost: isFiniteNonNegative(raw.partsCost) ? raw.partsCost : 0,
       laborCost: isFiniteNonNegative(raw.laborCost) ? raw.laborCost : 0,
       note: note,
+      attachments: normalizeAttachments(raw.attachments),
       createdAt: typeof raw.createdAt === 'string' && raw.createdAt ? raw.createdAt : nowIso(),
       updatedAt: typeof raw.updatedAt === 'string' && raw.updatedAt ? raw.updatedAt : nowIso()
     };
@@ -296,25 +343,25 @@
   function normalizeProfile(raw, index, seenIds, options, seenFuelingIds, seenMaintenanceIds) {
     var strict = Boolean(options && options.strict);
     if (!raw || typeof raw !== 'object') {
-      throw new Error('Профиль №' + (index + 1) + ': ожидался объект.');
+      throw new Error(tr('Профиль №{n}: ', { n: index + 1 }) + tr('ожидался объект.'));
     }
 
     var name = normalizeProfileName(raw.name, index);
     if (!Array.isArray(raw.fuelings)) {
-      throw new Error('В профиле «' + name + '» нет списка заправок.');
+      throw new Error(tr('В профиле «{name}» нет списка заправок.', { name: name }));
     }
     if (strict && raw.maintenances !== undefined && !Array.isArray(raw.maintenances)) {
-      throw new Error('В профиле «' + name + '» неверный список обслуживания.');
+      throw new Error(tr('В профиле «{name}» неверный список обслуживания.', { name: name }));
     }
     if (strict && raw.initialOdometer !== undefined && raw.initialOdometer !== null &&
         raw.initialOdometer !== '' && !isFiniteNonNegative(raw.initialOdometer)) {
-      throw new Error('В профиле «' + name + '» начальный пробег должен быть неотрицательным числом.');
+      throw new Error(tr('В профиле «{name}» начальный пробег должен быть неотрицательным числом.', { name: name }));
     }
 
     var id = typeof raw.id === 'string' && raw.id ? raw.id : makeId();
     if (seenIds && seenIds[id]) {
       if (strict) {
-        throw new Error('Профиль «' + name + '»: повторяющийся ID.');
+        throw new Error(tr('Профиль «{name}»: повторяющийся ID.', { name: name }));
       }
       do {
         id = makeId();
@@ -345,7 +392,7 @@
 
   function normalizeState(raw, options) {
     if (!raw || typeof raw !== 'object') {
-      throw new Error('Файл не похож на резервную копию АвтоЖурнала.');
+      throw new Error(tr('Файл не похож на резервную копию АвтоЖурнала.'));
     }
 
     var source = raw.data && typeof raw.data === 'object' ? raw.data : raw;
@@ -371,7 +418,7 @@
         }, 0, Object.create(null), options, seenFuelingIds, seenMaintenanceIds)
       ];
     } else {
-      throw new Error('В файле нет списка автомобилей или заправок.');
+      throw new Error(tr('В файле нет списка автомобилей или заправок.'));
     }
 
     if (profiles.length === 0) {
@@ -403,7 +450,7 @@
       storage = resolveStorage(store);
       rawText = storage.getItem(STORAGE_KEY);
     } catch (error) {
-      lastError = 'Браузер не разрешает доступ к локальному хранилищу.';
+      lastError = tr('Браузер не разрешает доступ к локальному хранилищу.');
       return defaultState();
     }
 
@@ -453,7 +500,7 @@
       } catch (ignored) {
         // Если хранилище переполнено или закрыто — просто идём дальше.
       }
-      lastError = 'Сохранённые данные не удалось прочитать. Начните с пустого списка или импортируйте резервную копию.';
+      lastError = tr('Сохранённые данные не удалось прочитать. Начните с пустого списка или импортируйте резервную копию.');
       return defaultState();
     }
   }
@@ -464,7 +511,7 @@
       resolveStorage(store).setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
     } catch (error) {
-      lastError = 'Не удалось сохранить данные на устройстве. Возможно, закончилось место или браузер запретил хранение.';
+      lastError = tr('Не удалось сохранить данные на устройстве. Возможно, закончилось место или браузер запретил хранение. Если вы добавили фото, удалите часть вложений и попробуйте снова.');
       return false;
     }
   }
@@ -482,7 +529,7 @@
         state: normalizeState(state)
       };
     } catch (error) {
-      lastError = 'Не удалось подготовить страховочную копию: ' + error.message;
+      lastError = tr('Не удалось подготовить страховочную копию: ') + error.message;
       return null;
     }
 
@@ -495,8 +542,7 @@
         throw new Error('копия не прошла проверку чтением.');
       }
     } catch (error) {
-      lastError = 'Не удалось создать страховочную копию. Данные не изменены. ' +
-        'Возможно, на устройстве закончилось место.';
+      lastError = tr('Не удалось создать страховочную копию. Данные не изменены. Возможно, на устройстве закончилось место.');
       return null;
     }
 
@@ -515,7 +561,7 @@
     try {
       rawText = resolveStorage(store).getItem(SNAPSHOT_KEY);
     } catch (error) {
-      lastError = 'Браузер не разрешает прочитать страховочную копию.';
+      lastError = tr('Браузер не разрешает прочитать страховочную копию.');
       throw new Error(lastError);
     }
     if (!rawText) {
@@ -533,7 +579,7 @@
         state: normalizeState(parsed.state)
       };
     } catch (error) {
-      lastError = 'Страховочная копия повреждена и не может быть восстановлена.';
+      lastError = tr('Страховочная копия повреждена и не может быть восстановлена.');
       throw new Error(lastError);
     }
   }
@@ -547,7 +593,7 @@
       return null;
     }
     if (!snapshot) {
-      lastError = 'Страховочная копия не найдена.';
+      lastError = tr('Страховочная копия не найдена.');
       return null;
     }
     if (!save(snapshot.state, store)) {
@@ -576,15 +622,15 @@
     try {
       parsed = JSON.parse(text);
     } catch (error) {
-      throw new Error('Это не JSON-файл. Выберите файл, который сохранило приложение АвтоЖурнал.');
+      throw new Error(tr('Это не JSON-файл. Выберите файл, который сохранило приложение АвтоЖурнал.'));
     }
 
     var knownApp = parsed && (parsed.app === APP_ID || LEGACY_APP_IDS.indexOf(parsed.app) !== -1);
     if (!parsed || typeof parsed !== 'object' || !knownApp) {
-      throw new Error('Это не резервная копия АвтоЖурнала.');
+      throw new Error(tr('Это не резервная копия АвтоЖурнала.'));
     }
     if (parsed.schemaVersion !== SCHEMA_VERSION && parsed.schemaVersion !== LEGACY_SCHEMA_VERSION) {
-      throw new Error('Файл создан другой версией приложения и пока не поддерживается.');
+      throw new Error(tr('Файл создан другой версией приложения и пока не поддерживается.'));
     }
     return normalizeState(parsed, { strict: true, today: todayIso() });
   }

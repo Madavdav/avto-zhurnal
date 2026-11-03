@@ -44,6 +44,20 @@
       }
     })();
   </script>
+  <script>
+    (function () {
+      var lang = 'ru';
+      try {
+        var saved = localStorage.getItem('muranoLog.lang.v1');
+        if (saved === 'ru' || saved === 'en' || saved === 'he') {
+          lang = saved;
+        }
+      } catch (error) {}
+      var root = document.documentElement;
+      root.setAttribute('lang', lang);
+      root.setAttribute('dir', lang === 'he' ? 'rtl' : 'ltr');
+    })();
+  </script>
   <title>АвтоЖурнал</title>
 </head>
 <body>
@@ -51,15 +65,18 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3.8 18.4c.5-6 4.6-10.5 10.1-10.5 2.1 0 4 .6 5.6 1.8"/>
-            <circle cx="19.8" cy="9.9" r="1.8" fill="currentColor" stroke="none"/>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 21V7a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v14"/>
+            <rect x="9" y="10" width="4" height="3" rx="0.8"/>
+            <path d="M16 9h1.2a2 2 0 0 1 2 2v4.2a1.2 1.2 0 0 0 2.4 0v-3.2l-1.2-1.2"/>
+            <path d="M19.2 12.8 20.6 11.4"/>
+            <path d="M6.5 21h10"/>
           </svg>
         </div>
         <div class="brand-text">
-          <span class="brand-title">АвтоЖурнал</span>
+          <span class="brand-title" data-i18n-ignore>АвтоЖурнал</span>
           <button class="car-switch" type="button" id="car-switch" aria-haspopup="dialog" aria-controls="profiles-modal" title="Сменить автомобиль">
-            <span id="active-profile-name">Моя машина</span>
+            <span id="active-profile-name" data-i18n-ignore>Моя машина</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
           </button>
         </div>
@@ -87,14 +104,14 @@
               </svg>
               <div class="hero-top">
                 <span class="chip chip-live"><span class="live-dot"></span>Текущий пробег</span>
-                <span class="hero-date" id="hero-date">—</span>
+                <span class="hero-date" id="hero-date" data-i18n-ignore>—</span>
               </div>
               <div class="odometer">
                 <span class="odometer-value" id="stat-odometer">130 000</span>
                 <span class="odometer-unit">км</span>
               </div>
               <div class="hero-bottom">
-                <p class="hero-hint" id="hero-hint">Стартовый пробег. Добавьте первую заправку.</p>
+                <p class="hero-hint" id="hero-hint" data-i18n-ignore>Стартовый пробег. Добавьте первую заправку.</p>
                 <button class="hero-add" type="button" data-action="add" aria-label="Добавить заправку">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                   <span>Заправить</span>
@@ -122,10 +139,10 @@
               </div>
               <span class="stat-label">Средний расход</span>
               <div class="stat-value-row">
-                <strong class="stat-value" id="stat-consumption">—</strong>
+                <strong class="stat-value" id="stat-consumption" data-i18n-ignore>—</strong>
                 <span class="stat-unit">л/100 км</span>
               </div>
-              <p class="stat-note" id="stat-consumption-note">по заправкам до полного</p>
+              <p class="stat-note" id="stat-consumption-note" data-i18n-ignore>по заправкам до полного</p>
             </article>
 
             <article class="stat-card">
@@ -138,9 +155,9 @@
               </div>
               <span class="stat-label">Расходы на топливо</span>
               <div class="stat-value-row">
-                <strong class="stat-value stat-value-money" id="stat-fuel-spent">—</strong>
+                <strong class="stat-value stat-value-money" id="stat-fuel-spent" data-i18n-ignore>—</strong>
               </div>
-              <p class="stat-note" id="stat-fuel-spent-note">в этом месяце</p>
+              <p class="stat-note" id="stat-fuel-spent-note" data-i18n-ignore>в этом месяце</p>
             </article>
 
             <article class="stat-card">
@@ -152,9 +169,9 @@
               </div>
               <span class="stat-label">Топливо, ₪/км</span>
               <div class="stat-value-row">
-                <strong class="stat-value" id="stat-costkm">—</strong>
+                <strong class="stat-value" id="stat-costkm" data-i18n-ignore>—</strong>
               </div>
-              <p class="stat-note" id="stat-costkm-note">нужны данные о пробеге</p>
+              <p class="stat-note" id="stat-costkm-note" data-i18n-ignore>нужны данные о пробеге</p>
             </article>
 
             <article class="stat-card">
@@ -167,9 +184,9 @@
               </div>
               <span class="stat-label">Всего на топливо</span>
               <div class="stat-value-row">
-                <strong class="stat-value stat-value-money" id="stat-total">—</strong>
+                <strong class="stat-value stat-value-money" id="stat-total" data-i18n-ignore>—</strong>
               </div>
-              <p class="stat-note" id="stat-total-note">пока нет заправок</p>
+              <p class="stat-note" id="stat-total-note" data-i18n-ignore>пока нет заправок</p>
             </article>
 
             <button class="stat-card stat-wide stat-card-link" type="button" data-nav="maintenance">
@@ -180,10 +197,10 @@
               </div>
               <div class="stat-wide-text">
                 <span class="stat-label">Обслуживание</span>
-                <p class="stat-note" id="stat-maintenance-note">пока нет записей</p>
+                <p class="stat-note" id="stat-maintenance-note" data-i18n-ignore>пока нет записей</p>
               </div>
               <div class="stat-value-row">
-                <strong class="stat-value" id="stat-maintenance-total">—</strong>
+                <strong class="stat-value" id="stat-maintenance-total" data-i18n-ignore>—</strong>
                 <svg class="stat-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
               </div>
             </button>
@@ -207,7 +224,7 @@
             <h1>Заправки</h1>
           </div>
           <button class="round-btn" type="button" data-action="add" aria-label="Добавить заправку">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </div>
         <div class="summary-strip" id="history-summary"></div>
@@ -227,7 +244,7 @@
           <div class="stats-summary-top">
             <div class="stats-summary-main">
               <span class="stat-label">Потрачено на бензин</span>
-              <strong class="stats-total" id="stats-total">—</strong>
+              <strong class="stats-total" id="stats-total" data-i18n-ignore>—</strong>
             </div>
             <label class="period-control" for="stats-period">
               <span class="visually-hidden">Период статистики</span>
@@ -241,14 +258,14 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
             </label>
           </div>
-          <p class="stats-summary-meta" id="stats-meta">—</p>
+          <p class="stats-summary-meta" id="stats-meta" data-i18n-ignore>—</p>
         </article>
 
         <article class="chart-card station-card">
           <div class="chart-head">
             <div>
               <h2>Статистика АЗС</h2>
-              <p id="station-period-label">за всё время</p>
+              <p id="station-period-label" data-i18n-ignore>за всё время</p>
             </div>
           </div>
           <div class="station-highlights" id="station-highlights"></div>
@@ -261,7 +278,7 @@
               <h2>Расход топлива</h2>
               <p>л / 100 км</p>
             </div>
-            <span class="chip chip-muted" id="consumption-badge">—</span>
+            <span class="chip chip-muted" id="consumption-badge" data-i18n-ignore>—</span>
           </div>
           <div class="chart" id="consumption-chart"></div>
         </article>
@@ -272,7 +289,7 @@
               <h2>Расходы</h2>
               <p>последние 6 месяцев, ₪</p>
             </div>
-            <span class="chip chip-muted" id="expenses-badge">—</span>
+            <span class="chip chip-muted" id="expenses-badge" data-i18n-ignore>—</span>
           </div>
           <div class="chart" id="expenses-chart"></div>
         </article>
@@ -288,17 +305,17 @@
             <h1>Обслуживание</h1>
           </div>
           <button class="round-btn" type="button" data-action="add-maintenance" aria-label="Добавить запись обслуживания">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </div>
         <article class="stats-summary maintenance-summary">
           <div class="stats-summary-top">
             <div class="stats-summary-main">
               <span class="stat-label">Расходы на обслуживание</span>
-              <strong class="stats-total" id="maintenance-total-all">—</strong>
+              <strong class="stats-total" id="maintenance-total-all" data-i18n-ignore>—</strong>
             </div>
           </div>
-          <p class="stats-summary-meta" id="maintenance-summary-meta">пока нет записей</p>
+          <p class="stats-summary-meta" id="maintenance-summary-meta" data-i18n-ignore>пока нет записей</p>
         </article>
         <div class="section-head">
           <h2>История</h2>
@@ -321,7 +338,7 @@
               <h2>Оформление</h2>
               <p class="settings-note">Выберите светлую или тёмную тему. По умолчанию приложение следует настройке телефона.</p>
             </div>
-            <span class="settings-status" id="theme-current" aria-live="polite">Как в системе</span>
+            <span class="settings-status" id="theme-current" aria-live="polite" data-i18n-ignore>Как в системе</span>
           </div>
           <div class="theme-options" role="group" aria-label="Тема оформления">
             <button class="theme-option" type="button" data-theme-choice="light" aria-pressed="false">
@@ -337,7 +354,23 @@
               <span>Как в системе</span>
             </button>
           </div>
-          <p class="theme-hint" id="theme-hint"></p>
+          <p class="theme-hint" id="theme-hint" data-i18n-ignore></p>
+        </article>
+
+        <article class="settings-card">
+          <h2>Язык</h2>
+          <p class="settings-note">Выберите язык интерфейса. Выбор сохраняется на этом устройстве отдельно от журнала.</p>
+          <label class="field" for="language-select">
+            <span class="field-label">Язык интерфейса</span>
+            <span class="input-wrap select-wrap">
+              <select id="language-select" data-i18n-ignore>
+                <option value="ru" data-i18n-ignore>Русский</option>
+                <option value="en" data-i18n-ignore>English</option>
+                <option value="he" data-i18n-ignore>עברית</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+            </span>
+          </label>
         </article>
 
         <article class="settings-card">
@@ -357,7 +390,7 @@
                 <span class="input-suffix">км</span>
               </span>
             </label>
-            <p class="form-error" id="settings-error" role="alert"></p>
+            <p class="form-error" id="settings-error" role="alert" data-i18n-ignore></p>
             <button class="secondary-btn" type="submit">Сохранить автомобиль</button>
           </form>
           <button class="secondary-btn settings-profiles-btn" type="button" id="settings-profiles-btn">Сменить или добавить автомобиль</button>
@@ -379,8 +412,8 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 5v5h5"/></svg>
             Восстановить последнюю копию
           </button>
-          <p class="fineprint" id="snapshot-info"></p>
-          <p class="fineprint" id="storage-info"></p>
+          <p class="fineprint" id="snapshot-info" data-i18n-ignore></p>
+          <p class="fineprint" id="storage-info" data-i18n-ignore></p>
         </article>
 
         <article class="settings-card">
@@ -401,7 +434,7 @@
         </article>
 
         <footer class="app-footer">
-          АвтоЖурнал · версия 2.7.0<br>
+          <span data-i18n-ignore>АвтоЖурнал</span> · <span>версия 2.7.1</span><br>
           Данные не покидают ваше устройство.
         </footer>
       </section>
@@ -417,7 +450,7 @@
         <span>Заправки</span>
       </button>
       <button class="nav-add" type="button" data-action="add" aria-label="Добавить заправку">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
       <button class="nav-item" type="button" data-nav="maintenance" aria-label="Сервис и обслуживание">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -439,7 +472,7 @@
         <button class="icon-btn" type="button" id="sheet-close" aria-label="Закрыть форму">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
         </button>
-        <h2 id="sheet-title">Новая заправка</h2>
+        <h2 id="sheet-title" data-i18n-ignore>Новая заправка</h2>
         <span class="sheet-spacer"></span>
       </header>
 
@@ -471,7 +504,7 @@
           <div class="ocr-preview" id="ocr-preview" hidden>
             <img id="ocr-preview-image" alt="Фото для распознавания">
             <div class="ocr-preview-meta">
-              <span id="ocr-file-name">Фото выбрано</span>
+              <span id="ocr-file-name" data-i18n-ignore>Фото выбрано</span>
               <button class="ocr-preview-remove" type="button" id="ocr-preview-remove">Убрать</button>
             </div>
           </div>
@@ -572,7 +605,7 @@
             </span>
           </label>
 
-          <p class="calc-hint" id="calc-hint" aria-live="polite">
+          <p class="calc-hint" id="calc-hint" aria-live="polite" data-i18n-ignore>
             Введите литры и цену — недостающее поле заполнится автоматически.
           </p>
         </section>
@@ -606,7 +639,7 @@
           </span>
         </label>
 
-        <p class="form-error" id="form-error" role="alert"></p>
+        <p class="form-error" id="form-error" role="alert" data-i18n-ignore></p>
 
         <button class="primary-btn" type="submit" id="fuel-submit">Сохранить заправку</button>
         <button class="danger-link" type="button" id="fuel-delete" hidden>Удалить эту заправку</button>
@@ -633,7 +666,7 @@
         <img id="ocr-review-image" alt="Фото, по которому распознавали данные">
       </div>
 
-      <p class="ocr-review-badge" id="ocr-review-confidence"></p>
+      <p class="ocr-review-badge" id="ocr-review-confidence" data-i18n-ignore></p>
 
       <div class="ocr-review-fields">
         <label class="field" for="ocr-review-liters">
@@ -659,7 +692,7 @@
         </label>
       </div>
 
-      <p class="form-error" id="ocr-review-error" role="alert"></p>
+      <p class="form-error" id="ocr-review-error" role="alert" data-i18n-ignore></p>
 
       <div class="ocr-review-actions">
         <button class="ghost-btn" type="button" id="ocr-review-manual">Ввести вручную</button>
@@ -670,7 +703,7 @@
 
       <details class="ocr-raw">
         <summary>Показать распознанный текст</summary>
-        <pre id="ocr-raw-text"></pre>
+        <pre id="ocr-raw-text" data-i18n-ignore></pre>
       </details>
     </div>
   </div>
@@ -689,7 +722,7 @@
       </div>
 
       <p class="profile-modal-note" id="profiles-note">Выберите машину — у каждой свой журнал, расход и статистика.</p>
-      <div class="profile-list" id="profiles-list"></div>
+      <div class="profile-list" id="profiles-list" data-i18n-ignore></div>
       <button class="secondary-btn" type="button" id="profile-add-btn">+ Добавить автомобиль</button>
 
       <form class="profile-form" id="profile-form" novalidate hidden>
@@ -707,7 +740,7 @@
             <span class="input-suffix">км</span>
           </span>
         </label>
-        <p class="form-error" id="profile-error" role="alert"></p>
+        <p class="form-error" id="profile-error" role="alert" data-i18n-ignore></p>
         <div class="profile-form-actions">
           <button class="ghost-btn" type="button" id="profile-cancel">Отмена</button>
           <button class="primary-btn" type="submit" id="profile-submit">Добавить</button>
@@ -719,8 +752,8 @@
   <!-- ПОДТВЕРЖДЕНИЕ -->
   <div class="modal-backdrop" id="confirm-modal" hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text">
-      <h3 id="confirm-title">Удалить запись?</h3>
-      <p id="confirm-text">Это действие нельзя отменить.</p>
+      <h3 id="confirm-title" data-i18n-ignore>Удалить запись?</h3>
+      <p id="confirm-text" data-i18n-ignore>Это действие нельзя отменить.</p>
       <div class="modal-actions">
         <button class="ghost-btn" type="button" id="confirm-cancel">Отмена</button>
         <button class="danger-solid" type="button" id="confirm-ok">Удалить</button>
@@ -737,7 +770,7 @@
         </button>
         <div class="sheet-title-group">
           <p class="eyebrow">Сервис</p>
-          <h2 id="maintenance-sheet-title">Запись обслуживания</h2>
+          <h2 id="maintenance-sheet-title" data-i18n-ignore>Запись обслуживания</h2>
         </div>
         <button class="icon-btn icon-btn-danger" type="button" id="maintenance-delete" aria-label="Удалить запись" hidden>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg>
@@ -788,7 +821,7 @@
 
         <div class="service-total-preview">
           <span>Итого</span>
-          <strong id="maintenance-form-total">0,00 ₪</strong>
+          <strong id="maintenance-form-total" data-i18n-ignore>0,00 ₪</strong>
         </div>
 
         <label class="field" for="maintenance-note">
@@ -798,7 +831,32 @@
           </span>
         </label>
 
-        <p class="form-error" id="maintenance-form-error" role="alert"></p>
+        <section class="attachments-card" aria-labelledby="maintenance-attachments-title">
+          <div class="attachments-head">
+            <div>
+              <p class="eyebrow">Документы</p>
+              <h3 id="maintenance-attachments-title">Фото и сканы</h3>
+              <p class="attachments-note">Добавьте чек, счёт или гарантию. Файлы остаются на этом устройстве.</p>
+            </div>
+            <span class="chip chip-muted" id="maintenance-attachments-count" data-i18n-ignore>0 / 5</span>
+          </div>
+          <input class="visually-hidden" id="maintenance-camera-input" type="file" accept="image/*" capture="environment" tabindex="-1">
+          <input class="visually-hidden" id="maintenance-gallery-input" type="file" accept="image/*" multiple tabindex="-1">
+          <div class="attachment-actions">
+            <button class="secondary-btn" type="button" id="maintenance-camera-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.4"/></svg>
+              Снять фото
+            </button>
+            <button class="secondary-btn" type="button" id="maintenance-gallery-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-4.5-4.5L7 20"/></svg>
+              Из галереи
+            </button>
+          </div>
+          <div class="attachment-list" id="maintenance-attachments" data-i18n-ignore></div>
+          <p class="attachment-hint" id="maintenance-attachments-hint" data-i18n-ignore>До 5 файлов, каждый до 12 МБ. После сжатия файл хранится только на этом устройстве.</p>
+        </section>
+
+        <p class="form-error" id="maintenance-form-error" role="alert" data-i18n-ignore></p>
 
         <div class="form-actions">
           <button class="ghost-btn" type="button" id="maintenance-form-cancel">Отмена</button>
@@ -808,8 +866,28 @@
     </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <!-- ПРОСМОТР ВЛОЖЕНИЯ -->
+  <div class="modal-backdrop" id="attachment-viewer" hidden>
+    <div class="modal-card attachment-viewer-card" role="dialog" aria-modal="true" aria-labelledby="attachment-viewer-title">
+      <div class="profile-modal-head">
+        <div>
+          <p class="eyebrow">Вложение</p>
+          <h3 id="attachment-viewer-title">Просмотр фото</h3>
+        </div>
+        <button class="icon-btn" type="button" id="attachment-viewer-close" aria-label="Закрыть просмотр">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="attachment-viewer-image">
+        <img id="attachment-viewer-image" alt="">
+      </div>
+      <p class="attachment-viewer-meta" id="attachment-viewer-meta"></p>
+    </div>
+  </div>
 
+  <div class="toast" id="toast" role="status" aria-live="polite" data-i18n-ignore></div>
+
+  <script src="./i18n.js"></script>
   <script src="./calc.js"></script>
   <script src="./storage.js"></script>
   <script src="./charts.js"></script>

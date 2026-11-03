@@ -2465,9 +2465,9 @@ body.sheet-open {
   }
 
   .mini-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
   }
 
   .mini-btn svg {
@@ -2644,5 +2644,405 @@ html[data-theme="light"] .switch input:checked + .switch-track::after {
   .fuel-card.log-card,
   .toast {
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Мягкая геометрия иконок ────────────────────────────── */
+
+.brand-icon,
+.icon-btn,
+.round-btn,
+.stat-icon,
+.mini-btn,
+.empty-state-icon,
+.nav-add,
+.profile-avatar {
+  border-radius: 50%;
+}
+
+.nav-item.is-active,
+.hero-add {
+  border-radius: 999px;
+}
+
+.theme-option {
+  border-radius: 20px;
+}
+
+.mini-btn::after {
+  inset: -5px;
+}
+
+.brand-icon svg,
+.icon-btn svg,
+.round-btn svg,
+.stat-icon svg,
+.mini-btn svg,
+.empty-state-icon svg,
+.nav-item svg,
+.nav-add svg,
+.theme-option svg,
+.car-switch svg,
+.secondary-btn svg,
+.select-chevron,
+.stat-arrow,
+.chart-empty-icon {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Вложения обслуживания ──────────────────────────────── */
+
+.attachments-card {
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-2);
+}
+
+.attachments-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.attachments-head .eyebrow {
+  margin: 0 0 3px;
+}
+
+.attachments-head h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.attachments-note {
+  max-width: 30em;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.attachment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attachment-actions .secondary-btn {
+  min-height: 42px;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.attachment-actions .secondary-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.attachment-actions .secondary-btn:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.attachment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attachment-list:empty {
+  display: none;
+}
+
+.attachment-item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto 36px;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.attachment-thumb {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  cursor: zoom-in;
+}
+
+.attachment-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.attachment-details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attachment-details strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.attachment-details span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-details small {
+  color: var(--muted-2);
+  font-size: 9.5px;
+}
+
+.attachment-purpose {
+  display: block;
+  min-width: 0;
+}
+
+.attachment-purpose select {
+  max-width: 118px;
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.attachment-hint {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.record-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.record-attachment {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: zoom-in;
+}
+
+.record-attachment img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.record-attachment span {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  padding: 8px 3px 2px;
+  background: linear-gradient(transparent, rgba(7, 14, 25, 0.78));
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.record-attachments-more {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.attachment-viewer-card {
+  display: flex;
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 32px);
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.attachment-viewer-image {
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface-2);
+}
+
+.attachment-viewer-image img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: min(70dvh, 620px);
+  object-fit: contain;
+}
+
+.attachment-viewer-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.settings-card .input-wrap select {
+  min-height: 48px;
+}
+
+/* ── Арабский и иврит: направление справа налево ─────────── */
+
+html[dir="rtl"] .stat-card,
+html[dir="rtl"] .stat-card-link,
+html[dir="rtl"] .settings-card,
+html[dir="rtl"] .modal-card,
+html[dir="rtl"] .sheet-panel,
+html[dir="rtl"] .station-row,
+html[dir="rtl"] .fuel-card,
+html[dir="rtl"] .profile-row {
+  text-align: right;
+}
+
+html[dir="rtl"] .stat-wide .stat-value-row {
+  text-align: left;
+}
+
+html[dir="rtl"] .stat-icon {
+  margin: 0 6px 0 0;
+}
+
+html[dir="rtl"] .stat-wide .stat-icon {
+  margin: 0;
+}
+
+html[dir="rtl"] .stat-wide .stat-arrow {
+  margin-right: 2px;
+  margin-left: 0;
+  transform: scaleX(-1);
+}
+
+html[dir="rtl"] .fuel-actions {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+html[dir="rtl"] .fuel-meta span + span::before {
+  margin-right: 0;
+  margin-left: 5px;
+}
+
+html[dir="rtl"] .select-chevron {
+  right: auto;
+  left: 13px;
+}
+
+html[dir="rtl"] .input-wrap select {
+  padding-right: 13px;
+  padding-left: 38px;
+}
+
+html[dir="rtl"] .attachment-purpose select {
+  padding-right: 9px;
+  padding-left: 9px;
+}
+
+html[dir="rtl"] .record-attachment span {
+  direction: rtl;
+}
+
+html[dir="rtl"] .toast {
+  text-align: right;
+}
+
+@media (min-width: 1100px) {
+  html[dir="rtl"] .app {
+    grid-template-columns: minmax(0, 1fr) 86px;
+  }
+
+  html[dir="rtl"] .topbar,
+  html[dir="rtl"] .main {
+    grid-column: 1;
+  }
+
+  html[dir="rtl"] .bottom-nav {
+    right: 18px;
+    left: auto;
+  }
+
+  html[dir="rtl"] .toast {
+    left: calc(50% - 43px);
+  }
+}
+
+@media (max-width: 480px) {
+  .attachment-item {
+    grid-template-columns: 50px minmax(0, 1fr) 34px;
+  }
+
+  .attachment-thumb {
+    width: 50px;
+    height: 50px;
+  }
+
+  .attachment-purpose {
+    grid-column: 2 / 3;
+  }
+
+  .attachment-purpose select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .attachment-item .mini-btn {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
   }
 }
