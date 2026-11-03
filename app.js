@@ -346,6 +346,7 @@
     }
 
     bindNavigation();
+    bindAutoHidingNavigation();
     bindForm();
     bindOcr();
     bindMaintenanceForm();
@@ -631,10 +632,108 @@
     });
   }
 
+  function bindAutoHidingNavigation() {
+    el.bottomNav = document.querySelector('.bottom-nav');
+    if (!el.bottomNav) {
+      return;
+    }
+
+    var lastScrollY = Math.max(0, window.scrollY || 0);
+    var scrollDelta = 0;
+    var scrollFrame = 0;
+
+    function revealNavigation() {
+      document.body.classList.remove('nav-hidden');
+      scrollDelta = 0;
+    }
+
+    function shouldKeepNavigationVisible(scrollY) {
+      var active = document.activeElement;
+      var root = document.scrollingElement || document.documentElement;
+      var distanceToBottom = root.scrollHeight - window.innerHeight - scrollY;
+      var modalOpen = document.querySelector('.modal-backdrop:not([hidden])');
+      var sheetOpen = document.body.classList.contains('sheet-open');
+      var editing = active && active.matches && active.matches('input, select, textarea, [contenteditable="true"]');
+
+      return Boolean(
+        sheetOpen || modalOpen || editing || el.bottomNav.contains(active) ||
+        scrollY < 64 || distanceToBottom < 44 || root.scrollHeight <= window.innerHeight + 24
+      );
+    }
+
+    function handleScroll() {
+      if (scrollFrame) {
+        return;
+      }
+
+      scrollFrame = window.requestAnimationFrame(function () {
+        scrollFrame = 0;
+        var currentY = Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+        var delta = currentY - lastScrollY;
+        lastScrollY = currentY;
+
+        if (Math.abs(delta) < 2) {
+          return;
+        }
+        if (shouldKeepNavigationVisible(currentY)) {
+          revealNavigation();
+          return;
+        }
+
+        scrollDelta += delta;
+        if (scrollDelta > 14) {
+          document.body.classList.add('nav-hidden');
+          scrollDelta = 0;
+        } else if (scrollDelta < -8) {
+          revealNavigation();
+        }
+      });
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', revealNavigation, { passive: true });
+    window.addEventListener('orientationchange', revealNavigation, { passive: true });
+    document.addEventListener('focusin', function (event) {
+      if (el.bottomNav.contains(event.target) ||
+          (event.target.matches && event.target.matches('input, select, textarea, [contenteditable="true"]'))) {
+        revealNavigation();
+      }
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) {
+        revealNavigation();
+      }
+    });
+
+    if (typeof MutationObserver === 'function') {
+      var sheetWasOpen = document.body.classList.contains('sheet-open');
+      var dialogObserver = new MutationObserver(function (records) {
+        var sheetIsOpen = document.body.classList.contains('sheet-open');
+        var sheetStateChanged = sheetWasOpen !== sheetIsOpen;
+        sheetWasOpen = sheetIsOpen;
+
+        var dialogStateChanged = records.some(function (record) {
+          return record.attributeName === 'hidden' &&
+            record.target.classList && record.target.classList.contains('modal-backdrop');
+        });
+
+        if (sheetStateChanged || dialogStateChanged) {
+          revealNavigation();
+        }
+      });
+      dialogObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'hidden'],
+        subtree: true
+      });
+    }
+  }
+
   function showScreen(name) {
     if (!name) {
       return;
     }
+    document.body.classList.remove('nav-hidden');
     currentScreen = name;
     el.screens.forEach(function (screen) {
       screen.classList.toggle('is-active', screen.getAttribute('data-screen') === name);

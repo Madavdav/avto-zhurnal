@@ -10,7 +10,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'avto-zhurnal-v2.8.0';
+var CACHE_NAME = 'avto-zhurnal-v2.9.0';
 var CACHE_PREFIXES = ['murano-log-', 'avto-zhurnal-'];
 
 var APP_SHELL = [
