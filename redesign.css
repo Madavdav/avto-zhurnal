@@ -3046,3 +3046,176 @@ html[dir="rtl"] .toast {
     align-self: center;
   }
 }
+
+/* ── 2.8: спокойная минималистичная поверхность ─────────── */
+
+:root {
+  --bg: #0b111b;
+  --bg-deep: #0b111b;
+  --surface: #111a27;
+  --surface-2: #151f2e;
+  --surface-raised: #1b2738;
+  --card: #111a27;
+  --card-bg: #111a27;
+  --card-bg-hover: #162233;
+  --border: rgba(166, 184, 210, 0.12);
+  --border-strong: rgba(166, 184, 210, 0.2);
+  --accent-fill: #2866ce;
+  --radius: 16px;
+  --radius-lg: 20px;
+  --radius-control: 12px;
+  --topbar-bg: #0b111b;
+  --nav-bg: #101927;
+  --nav-border: rgba(166, 184, 210, 0.14);
+  --glass-strong: #111a27;
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-topbar: none;
+  --shadow-nav: none;
+  --shadow-modal: 0 18px 48px rgba(0, 0, 0, 0.24);
+  --hero-bg: #111d2c;
+  --hero-border: rgba(145, 174, 214, 0.15);
+  --hero-shadow: none;
+  --hero-route: rgba(120, 174, 255, 0.06);
+  --hero-glow: transparent;
+  --input-bg: #0f1824;
+  --input-border: rgba(166, 184, 210, 0.16);
+}
+
+html[data-theme="light"] {
+  --bg: #f4f6f9;
+  --bg-deep: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-raised: #eef1f5;
+  --card: #ffffff;
+  --card-bg: #ffffff;
+  --card-bg-hover: #f7f9fc;
+  --border: rgba(30, 47, 69, 0.1);
+  --border-strong: rgba(30, 47, 69, 0.17);
+  --accent-fill: #2463ca;
+  --topbar-bg: #f4f6f9;
+  --nav-bg: #ffffff;
+  --nav-border: rgba(30, 47, 69, 0.11);
+  --glass-strong: #ffffff;
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-topbar: none;
+  --shadow-nav: none;
+  --shadow-modal: 0 16px 42px rgba(23, 40, 62, 0.16);
+  --hero-bg: #ffffff;
+  --hero-border: rgba(30, 47, 69, 0.11);
+  --hero-shadow: none;
+  --hero-route: rgba(36, 99, 202, 0.045);
+  --hero-glow: transparent;
+  --input-bg: #ffffff;
+  --input-border: rgba(30, 47, 69, 0.13);
+}
+
+html,
+html[data-theme="light"],
+body,
+html[data-theme="light"] body {
+  background: var(--bg);
+}
+
+.topbar,
+.bottom-nav {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+.topbar {
+  border-bottom-color: var(--border);
+}
+
+.bottom-nav {
+  border-radius: 16px;
+}
+
+.brand-icon {
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.hero {
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+.hero-glow,
+.hero-route {
+  display: none;
+}
+
+.stat-card,
+.fuel-card.log-card,
+.chart-card,
+.settings-card,
+.stats-summary,
+.service-card,
+.attachments-card,
+.profile-row,
+.modal-card {
+  box-shadow: none;
+}
+
+.stat-card,
+.fuel-card.log-card,
+.chart-card,
+.settings-card,
+.stats-summary,
+.service-card,
+.attachments-card,
+.profile-row,
+.modal-card,
+.calc-card,
+.ocr-card {
+  border-radius: var(--radius);
+}
+
+.stat-card,
+.fuel-card.log-card,
+.chart-card,
+.settings-card,
+.stats-summary,
+.service-card,
+.attachments-card,
+.profile-row {
+  background: var(--card-bg);
+}
+
+.nav-item {
+  border-radius: 12px;
+}
+
+.nav-item.is-active {
+  box-shadow: none;
+}
+
+.nav-add,
+.hero-add,
+.primary-btn {
+  box-shadow: none;
+}
+
+.period-switch {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.toast {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .stat-card:hover,
+  .fuel-card.log-card:hover,
+  .settings-card:hover,
+  .chart-card:hover {
+    transform: none;
+  }
+}

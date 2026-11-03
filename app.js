@@ -84,7 +84,7 @@
   var ATTACHMENT_PURPOSES = ['receipt', 'invoice', 'warranty', 'photo', 'other'];
 
   var THEME_KEY = 'muranoLog.theme.v1';
-  var THEME_COLORS = { light: '#f3f6fb', dark: '#07111f' };
+  var THEME_COLORS = { light: '#f4f6f9', dark: '#0b111b' };
   var themeMode = readThemeMode();
   var themeMedia = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
 
